@@ -1,43 +1,52 @@
 import time
 import csv
 import pandas as pd
-import os  # === 改动点 1：引入 os ===
-from selenium import webdriver
-from dateutil.relativedelta import relativedelta
+import os  
 import json
 import re
+import sys
 from datetime import datetime, timedelta
+from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
 
-# === 改动点 2：读取环境变量 ===
-# 指挥官 app.py 会把这些参数传进来，如果没有传，则使用默认值
-SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 5))  # 默认采集5个
-OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "国内预约榜.csv")  # 动态文件名
+# === 屏蔽警告并强制 UTF-8 输出，防止进度条截取特殊字符时崩溃 ===
+import warnings
+warnings.filterwarnings("ignore")
+if sys.stdout.encoding != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+# === 读取环境变量 ===
+SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 5))  
+OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "TapTap_Result.csv")  
 
 BASE_URL = "https://www.taptap.cn"
 
-
-# BASE_DIR 不再写死，直接存放在当前目录下即可
-
 def init_driver():
     options = Options()
-    # === 改动点 3：强制开启无头模式，否则云端部署会报错 ===
-    options.add_argument("--headless")
+    # === 针对云端 Linux 环境的核心配置 ===
+    options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--start-maximized")
+    options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    # 显式指向 Streamlit Cloud packages.txt 安装的系统级浏览器
+    options.binary_location = "/usr/bin/chromium"
+    service = Service("/usr/bin/chromedriver")
+    
+    driver = webdriver.Chrome(service=service, options=options)
+    
+    # CDP 隐身注入
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
+        "source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"
+    })
     return driver
-
-
-# ... [scroll_to_bottom_then_top 等中间函数保持完全不变] ...
 
 def scroll_to_bottom_then_top(driver, wait_time=1):
     last_height = driver.execute_script("return document.body.scrollHeight")
@@ -51,19 +60,18 @@ def scroll_to_bottom_then_top(driver, wait_time=1):
     driver.execute_script("window.scrollTo(0, 0);")
     time.sleep(wait_time)
 
-
 def get_absolute_link(href, base_url=BASE_URL):
     if href.startswith("/"):
         return base_url + href
     return href
 
-
 def get_game_list(driver):
+    print("正在滚动加载首页榜单数据...")
     scroll_to_bottom_then_top(driver)
     games = driver.find_elements(By.CSS_SELECTOR, "div.rank-game-cell")
     game_list = []
 
-    # === 改动点 4：在这里截断数量，只处理 SCRAPE_LIMIT 指定的个数 ===
+    # 截断数量，只处理 SCRAPE_LIMIT 指定的个数
     target_games = games[:SCRAPE_LIMIT]
 
     for i, game in enumerate(target_games):
@@ -77,9 +85,6 @@ def get_game_list(driver):
         except Exception as e:
             continue
     return game_list
-
-
-# ... [get_platforms_data, get_additional_info, get_publisher, get_intro_full 保持完全不变] ...
 
 def get_platforms_data(driver):
     def normalize_number(text):
@@ -116,7 +121,6 @@ def get_platforms_data(driver):
         pass
     return platforms_data
 
-
 def get_additional_info(driver):
     try:
         tag_elements = driver.find_elements(By.CSS_SELECTOR, "a.app-intro__tag-item")
@@ -124,14 +128,12 @@ def get_additional_info(driver):
     except:
         return ""
 
-
 def get_publisher(driver):
     try:
         return driver.find_element(By.XPATH,
                                    "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").text.strip()
     except:
         return ""
-
 
 def get_intro_full(driver):
     try:
@@ -145,54 +147,59 @@ def get_intro_full(driver):
     except:
         return ""
 
-
-# === 改动点 5：修改保存函数，使用 OUTPUT_FILE ===
 def save_detailed_data_to_csv(data):
     df = pd.DataFrame(data)
     df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-    print(f"[INFO] 详细数据已保存至 {OUTPUT_FILE}")
-
+    print(f"File Saved: {OUTPUT_FILE}")
 
 def main():
+    print(f"TapTap Kernel Running: Target Top {SCRAPE_LIMIT}")
     driver = init_driver()
     url = "https://www.taptap.cn/top/reserve"
-    driver.get(url)
+    
+    try:
+        driver.get(url)
+        time.sleep(3) # 给首页留点渲染时间
 
-    # 获取经过 SCRAPE_LIMIT 截断的游戏列表
-    games = get_game_list(driver)
-    results = []
+        # 获取经过 SCRAPE_LIMIT 截断的游戏列表
+        games = get_game_list(driver)
+        results = []
+        total_games = len(games)
 
-    for i, row in enumerate(games):
-        try:
-            driver.get(row["link"])
-            time.sleep(1)
-            detail = get_platforms_data(driver)
-            tags_str = get_additional_info(driver)
-            factory = get_publisher(driver)
-            intro = get_intro_full(driver)
+        for i, row in enumerate(games):
+            try:
+                # === 配合 app.py 实时进度条打印 ===
+                print(f"[{i+1}/{total_games}] Processing Detail: {row['name']}")
+                
+                driver.get(row["link"])
+                time.sleep(1)
+                detail = get_platforms_data(driver)
+                tags_str = get_additional_info(driver)
+                factory = get_publisher(driver)
+                intro = get_intro_full(driver)
 
-            result = {
-                "排名": row["rank"],
-                "名称": row["name"],
-                "简介": intro[:150] + "..." if len(intro) > 150 else intro,  # 限制长度防止表格太长
-                "标签": tags_str,
-                "厂商": factory,
-            }
-            # 整合平台数据
-            for plat in ["安卓", "iOS", "PC端"]:
-                if plat in detail:
-                    result[f"{plat}平台"] = str(detail[plat])
-                else:
-                    result[f"{plat}平台"] = ""
+                result = {
+                    "排名": row["rank"],
+                    "名称": row["name"],
+                    "简介": intro[:150] + "..." if len(intro) > 150 else intro,  
+                    "标签": tags_str,
+                    "厂商": factory,
+                }
+                # 整合平台数据
+                for plat in ["安卓", "iOS", "PC端"]:
+                    if plat in detail:
+                        result[f"{plat}平台"] = str(detail[plat])
+                    else:
+                        result[f"{plat}平台"] = ""
 
-            results.append(result)
-        except Exception as e:
-            continue
+                results.append(result)
+            except Exception as e:
+                continue
 
-    # 保存到动态指定的文件
-    save_detailed_data_to_csv(results)
-    driver.quit()
-
+        # 保存到动态指定的文件
+        save_detailed_data_to_csv(results)
+    finally:
+        driver.quit()
 
 if __name__ == "__main__":
     main()
