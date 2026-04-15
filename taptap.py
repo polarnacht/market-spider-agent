@@ -1,16 +1,13 @@
 import time
-import csv
 import pandas as pd
-import os  
-import json
+import os
 import re
 import sys
-from datetime import datetime, timedelta
+import shutil
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 
@@ -22,8 +19,8 @@ if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
 # === 读取环境变量 ===
-SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 5))  
-OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "TapTap_Result.csv")  
+SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 5))
+OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "TapTap_Result.csv")
 
 BASE_URL = "https://www.taptap.cn"
 
@@ -33,15 +30,24 @@ def init_driver():
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    
-    # 显式指向 Streamlit Cloud packages.txt 安装的系统级浏览器
-    options.binary_location = "/usr/bin/chromium"
-    service = Service("/usr/bin/chromedriver")
-    
+
+    # === 核心修改：动态寻找 Chromium 和 Chromedriver 的路径 ===
+    chromium_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+    chromedriver_path = shutil.which("chromedriver")
+
+    if chromium_path:
+        options.binary_location = chromium_path
+
+    if chromedriver_path:
+        service = Service(executable_path=chromedriver_path)
+    else:
+        service = Service()
+
     driver = webdriver.Chrome(service=service, options=options)
-    
+
     # CDP 隐身注入
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
         "source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"
@@ -197,7 +203,10 @@ def main():
                 continue
 
         # 保存到动态指定的文件
-        save_detailed_data_to_csv(results)
+        if results:
+            save_detailed_data_to_csv(results)
+        else:
+            print("未能抓取到任何有效数据。")
     finally:
         driver.quit()
 
