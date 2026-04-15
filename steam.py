@@ -13,45 +13,35 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# === 彻底屏蔽干扰日志并强制 UTF-8 输出 ===
+# 屏蔽所有干扰
 warnings.filterwarnings("ignore")
 if sys.stdout.encoding != 'utf-8':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# === 环境变量读取 (由指挥官 app.py 传参) ===
 SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 5))
 OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "Steam_Result.csv")
 
 def get_stealth_driver():
-    """
-    构造适配云端 Linux 环境的隐身驱动器，并强制对齐系统路径
-    """
     options = Options()
-    # 1. 云端运行必备参数
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     
-    # 2. 模拟真实高分屏特征
-    options.add_argument("--force-device-scale-factor=1")
-    
-    # 3. 抹除自动化痕迹
+    # 模拟真实用户的硬件环境
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.experimental_options["excludeSwitches"] = ["enable-automation"]
-    options.experimental_options["useAutomationExtension"] = False
-    
-    # 模拟最新版 Chrome User-Agent
+    options.add_argument("--lang=zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7")
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     options.add_argument(f'user-agent={ua}')
+    
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option('useAutomationExtension', False)
 
-    # 4. 动态锁定系统路径 (关键：解决 SessionNotCreatedException)
+    # 路径锁定
     chrome_bin = "/usr/bin/chromium"
     driver_bin = "/usr/bin/chromedriver"
-    
-    # 如果路径不对，用 shutil 搜一遍
     if not os.path.exists(chrome_bin):
         chrome_bin = shutil.which("chromium") or shutil.which("chromium-browser")
     if not os.path.exists(driver_bin):
@@ -59,94 +49,99 @@ def get_stealth_driver():
 
     options.binary_location = chrome_bin
     service = Service(executable_path=driver_bin)
-
     driver = webdriver.Chrome(service=service, options=options)
 
-    # 5. CDP 注入抹除痕迹
+    # 注入高级隐身脚本 (抹除硬件加速、插件等指纹)
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"
+        "source": """
+            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            window.chrome = { runtime: {} };
+            Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        """
     })
     return driver
 
-def scrape_steamdb():
-    url = "https://steamdb.info/topsellers/"
-    print(f"Steam Kernel Running: Target Top {SCRAPE_LIMIT}")
-    
-    driver = get_stealth_driver()
-    try:
-        driver.get(url)
+def bypass_cloudflare(driver):
+    """
+    专门针对 Cloudflare Turnstile 的自动过盾逻辑
+    """
+    print("正在尝试穿透 Cloudflare 防护层...")
+    for attempt in range(2): # 尝试 2 次
+        time.sleep(12) 
+        if "table-products" in driver.page_source:
+            return True
         
-        # === 核心策略 1：缓冲等待 Cloudflare 5秒盾 ===
-        time.sleep(10) 
-
-        # === 核心策略 2：智能尝试点击 Turnstile 验证框 ===
         try:
+            # 搜索验证框 iframe
             iframes = driver.find_elements(By.TAG_NAME, "iframe")
             for frame in iframes:
-                if "challenges" in frame.get_attribute("src"):
-                    print("Found Cloudflare challenge iframe, attempting to click...")
+                src = frame.get_attribute("src") or ""
+                if "challenges" in src or "turnstile" in src:
+                    print(f"发现验证框，尝试第 {attempt+1} 次模拟点击...")
                     driver.switch_to.frame(frame)
-                    try:
-                        checkbox = driver.find_element(By.CSS_SELECTOR, "input[type='checkbox']")
-                        driver.execute_script("arguments[0].click();", checkbox)
-                        print("✨ Checkbox clicked successfully!")
-                    except:
-                        driver.find_element(By.TAG_NAME, "body").click()
-                        print("✨ Clicked frame body as fallback.")
+                    # 尝试多种可能的复选框选择器
+                    for selector in ["input[type='checkbox']", "#challenge-stage", "body"]:
+                        try:
+                            target = driver.find_element(By.CSS_SELECTOR, selector)
+                            driver.execute_script("arguments[0].click();", target)
+                            break
+                        except: continue
                     driver.switch_to.default_content()
-                    time.sleep(5)
+                    time.sleep(8)
                     break
+            
+            # 模拟轻微滚动（诱导检测）
+            driver.execute_script("window.scrollBy(0, 100);")
+            
+            if "table-products" in driver.page_source:
+                return True
+            else:
+                print("未见表格，尝试刷新页面...")
+                driver.refresh()
         except:
             driver.switch_to.default_content()
-            pass
+    return False
 
-        # === 核心策略 3：检测数据表格是否渲染 ===
-        wait = WebDriverWait(driver, 30)
+def scrape_steamdb():
+    print(f"Steam Kernel Running: Target Top {SCRAPE_LIMIT}")
+    driver = get_stealth_driver()
+    try:
+        driver.get("https://steamdb.info/topsellers/")
+        
+        if not bypass_cloudflare(driver):
+            # 最后的挣扎：强制等待并检测
+            time.sleep(15)
+
+        wait = WebDriverWait(driver, 20)
         try:
-            if "table-products" not in driver.page_source:
-                print("Table not found, performing a force refresh...")
-                driver.refresh()
-                time.sleep(10)
             wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.table-products")))
         except:
             driver.save_screenshot("steam_debug.png")
-            print(f"❌ Failed to bypass. Page Title: {driver.title}")
+            print(f"❌ 穿透失败。当前页面标题: {driver.title}")
             return
 
-        # 解析 HTML
+        print("✨ 穿透成功，正在提取结构化数据...")
         soup = BeautifulSoup(driver.page_source, 'html.parser')
         table = soup.find('table', class_='table-products')
         rows = table.find('tbody').find_all('tr')[:SCRAPE_LIMIT]
         
         results = []
-        total = len(rows)
         for i, row in enumerate(rows):
             cols = row.find_all('td')
-            if len(cols) < 5: continue
-            
+            if len(cols) < 6: continue
             name = cols[2].get_text(strip=True)
-            # 配合进度条输出 [1/5] 格式
-            print(f"[{i+1}/{total}] Processing: {name}")
-            
-            # 处理排名变化
-            change_col = cols[4]
-            change_val = change_col.get_text(strip=True)
-            if "seller-pos-up" in str(change_col): change = f"+{change_val}"
-            elif "seller-pos-down" in str(change_col): change = f"-{change_val}"
-            else: change = change_val
-
+            print(f"[{i+1}/{len(rows)}] Processing: {name}")
             results.append({
                 "Rank": cols[0].get_text(strip=True).replace('.', ''),
                 "Game Name": name,
                 "Price": cols[3].get_text(strip=True),
-                "Change": change,
                 "Developer": cols[5].get_text(strip=True)
             })
 
         if results:
             pd.DataFrame(results).to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
             print(f"File Saved: {OUTPUT_FILE}")
-            
     finally:
         driver.quit()
 
