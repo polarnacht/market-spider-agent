@@ -10,7 +10,12 @@ from openai import OpenAI
 from datetime import datetime
 
 # ================= 核心配置区 =================
-API_KEY = "sk-cc6655649d204550bd5bcffd355ab4dd"
+# 优先从 Streamlit 云端安全配置(Secrets)中读取，若无则使用默认 Key
+if "api_key" in st.secrets:
+    API_KEY = st.secrets["api_key"]
+else:
+    API_KEY = "sk-cc6655649d204550bd5bcffd355ab4dd"
+
 BASE_URL = "https://api.deepseek.com"
 CLIENT = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
@@ -19,6 +24,14 @@ st.set_page_config(page_title="战略数分爬取 Agent", layout="wide", page_ic
 # --- 1. UI 头部设计 ---
 st.title("🛡️ 战略数分 - 市场信息提取 Agent")
 st.markdown("---")
+
+# --- 1.5 左侧边栏：控制面板 (新增清空功能) ---
+with st.sidebar:
+    st.header("🎛️ 控制面板")
+    st.markdown("用于重置 Agent 状态，开启全新查询。")
+    if st.button("🧹 清空所有对话和输出", use_container_width=True):
+        st.session_state.history = []
+        st.rerun()
 
 # --- 2. 动态说明指南 ---
 with st.expander("📌 使用指南与能力说明", expanded=True):
@@ -173,7 +186,7 @@ if prompt := st.chat_input("在此输入您的提取指令..."):
                 st.error(f"内核运行异常，详细日志如下：")
                 with st.expander("点击查看底层日志详情"):
                     st.code(final_logs)
-                st.info(" 战略分析：若出现 Timeout，通常由于云端网络或 IMDb 反爬升级，请尝试减少 SCRAPE_LIMIT 后重试。")
+                st.info(" 战略分析：若出现 Timeout，通常由于云端网络或反爬升级，请尝试减少数量后重试。")
 
     else:
         st.warning("⚠无法识别您的指令。请参考顶部的【使用指南】进行提问。")
