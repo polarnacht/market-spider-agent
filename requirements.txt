@@ -1,0 +1,7 @@
+streamlit
+pandas
+openai
+tabulate
+beautifulsoup4
+selenium
+webdriver-manager
