@@ -19,40 +19,27 @@ st.markdown("""
     .main { background-color: #F8FAFC; }
     /* 卡片与排版 */
     .dashboard-card { background: white; border: 1px solid #E2E8F0; padding: 20px; border-radius: 8px; height: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-    .card-title { font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 12px; border-bottom: 2px solid #3B82F6; padding-bottom: 6px; display: inline-block;}
-    .item-title { font-weight: 600; color: #334155; margin-top: 10px; margin-bottom: 4px; font-size: 0.95rem; }
-    .item-row { font-size: 0.85rem; color: #475569; margin-bottom: 3px; display: flex; align-items: flex-start; }
+    .card-title { font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 15px; border-bottom: 2px solid #3B82F6; padding-bottom: 6px; display: inline-block;}
+    .item-title { font-weight: 600; color: #334155; margin-top: 10px; margin-bottom: 6px; font-size: 0.95rem; }
+    .item-row { font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: flex; align-items: flex-start; }
     /* 精简标签 */
-    .tag-blue { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; flex-shrink: 0;}
-    .tag-red { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; flex-shrink: 0;}
-    .tag-green { background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; flex-shrink: 0;}
-    /* 提示词框与分隔 */
-    .guide-container { background: white; border: 1px solid #E2E8F0; padding: 20px; border-radius: 8px; margin-bottom: 30px;}
-    .guide-col { border-left: 3px solid #3B82F6; padding-left: 15px; }
-    code { color: #0369A1 !important; background: #F0F9FF !important; }
+    .tag-blue { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 38px; text-align: center; flex-shrink: 0;}
+    .tag-red { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 38px; text-align: center; flex-shrink: 0;}
+    /* 提示框与按钮 */
+    .guide-box { background: white; border: 1px solid #E2E8F0; padding: 15px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;}
+    code { color: #0369A1 !important; background: #F0F9FF !important; font-size: 0.95rem;}
     .stButton>button { border-radius: 6px; }
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 状态初始化与侧边栏 =================
+# ================= 2. 状态初始化与顶栏 =================
 if "history" not in st.session_state: st.session_state.history = []
 if "trigger_prompt" not in st.session_state: st.session_state.trigger_prompt = None
 
 def set_prompt(val): st.session_state.trigger_prompt = val
 
-with st.sidebar:
-    st.markdown("### 📝 报告生成偏好")
-    st.caption("设置下方选项，控制 AI 自动生成商业简报的分析视角。")
-    analysis_mode = st.radio(
-        "分析侧重点",
-        ["大盘趋势与数据概览", "潜力爆款特征挖掘", "赛道竞品数据对比", "跨端影游联动分析"],
-        label_visibility="collapsed"
-    )
-    st.divider()
-    st.caption(f"📅 系统日期：{datetime.now().strftime('%Y-%m-%d')}")
-
-# 顶部 Title 与 重置按钮
-col_t1, col_t2 = st.columns([5, 1])
+# 顶部 Title 与 重置按钮 (取代侧边栏)
+col_t1, col_t2 = st.columns([6, 1])
 with col_t1:
     st.title("🌐 泛娱乐市场情报 Agent")
 with col_t2:
@@ -70,33 +57,18 @@ active_prompt = st.session_state.trigger_prompt or user_input
 if len(st.session_state.history) == 0 and not active_prompt:
     st.write("")
     
-    # --- 模块 A: 指令指南 ---
+    # --- 模块 A: 指令指南 (唯一示例，可点击) ---
     st.markdown("### 💡 核心指令构造指南")
-    st.markdown("""
-    <div class="guide-container">
-        <div style="display: flex; gap: 40px;">
-            <div style="flex: 1;" class="guide-col">
-                <b style="font-size:1.05rem; color:#0F172A;">🎯 单点深度提取</b> <span style="color:#64748B; font-size:0.85rem;">(用于精准获取某个榜单的数据)</span><br>
-                <div style="margin-top: 8px; font-size:0.9rem;">
-                <b>语法：</b> <code>提取 [时间/分类] [数据源] 前[N]名</code><br>
-                <b>示例：</b> 提取 国内直播 前50名<br>
-                <b>示例：</b> 提取 Twitch直播 前20名
-                </div>
-            </div>
-            <div style="flex: 1;" class="guide-col">
-                <b style="font-size:1.05rem; color:#0F172A;">🌐 宏观大盘联动</b> <span style="color:#64748B; font-size:0.85rem;">(并发拉起多个数据源，生成研报)</span><br>
-                <div style="margin-top: 8px; font-size:0.9rem;">
-                <b>语法：</b> <code>分析 [时间] [行业大类]</code><br>
-                <b>示例：</b> 分析 直播大盘情况 <i>(自动并发国内外)</i><br>
-                <b>示例：</b> 生成 4月 泛娱乐全行业简报
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    g_col1, g_col2 = st.columns([3, 2])
+    with g_col1:
+        st.markdown("<div style='padding-top: 8px; font-size: 1rem; color: #1E293B;'><b>语法公式：</b> <code>[动作] + [时间/分类] + [数据源] + [数量]</code></div>", unsafe_allow_html=True)
+    with g_col2:
+        st.button("👉 示例提取：提取 4月玩匠开测榜 前50名", on_click=set_prompt, args=("提取 4月玩匠开测榜 前50名",), use_container_width=True)
 
-    # --- 模块 B: 数据源明细 (3x3 工整排版，细化直播分类) ---
-    st.markdown("### 🗂️ 挂载数据源能力")
+    st.markdown("---") # 绝对的视觉隔离
+
+    # --- 模块 B: 数据源明细 (3x3 工整排版，合并直播) ---
+    st.markdown("### 🗂️ 挂载数据源明细")
     cd1, cd2, cd3 = st.columns(3)
     
     with cd1:
@@ -118,20 +90,15 @@ if len(st.session_state.history) == 0 and not active_prompt:
         st.markdown(
 """<div class="dashboard-card">
 <div class="card-title">💻 PC & 直播模块</div>
-<div class="item-title" style="margin-top: 0px;">Steam 愿望榜</div>
+<div class="item-title">Steam 愿望榜</div>
 <div class="item-row"><span class="tag-blue">属性</span> 游戏名、近期热度增量</div>
 <div class="item-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
 <div class="item-row"><span class="tag-red">限制</span> 实时接口，单次建议100条内</div>
 
-<div class="item-title" style="margin-top: 15px;">国内直播榜 (播酱)</div>
-<div class="item-row"><span class="tag-blue">属性</span> 活跃观众、弹幕、礼物总值</div>
-<div class="item-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
-<div class="item-row"><span class="tag-red">限制</span> 按自然月统计算法，有滞后</div>
-
-<div class="item-title" style="margin-top: 15px;">国外直播榜 (Twitch)</div>
-<div class="item-row"><span class="tag-blue">属性</span> 峰值观众、频道数、观看时长</div>
-<div class="item-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
-<div class="item-row"><span class="tag-red">限制</span> 滚动统计近 30 日实时快照</div>
+<div class="item-title" style="margin-top: 20px;">国内外直播活跃榜</div>
+<div class="item-row"><span class="tag-blue">属性</span> 活跃观众、主播、弹幕、时长</div>
+<div class="item-row"><span class="tag-blue">参数</span> 国内(播酱) / 国外(Twitch)</div>
+<div class="item-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>
 </div>""", unsafe_allow_html=True)
 
     with cd3:
@@ -141,7 +108,7 @@ if len(st.session_state.history) == 0 and not active_prompt:
 <div class="item-title">豆瓣 影视榜</div>
 <div class="item-row"><span class="tag-blue">属性</span> 评分、评价人数、内容简介</div>
 <div class="item-row"><span class="tag-blue">参数</span> 国产 / 欧美 / 日剧 / 韩剧</div>
-<div class="item-row"><span class="tag-red">高危</span> 极易触发WAF，强限20条内</div>
+<div class="item-row"><span class="tag-red">限制</span> 极易触发WAF，强限20条内</div>
 
 <div class="item-title" style="margin-top: 20px;">IMDb 趋势榜</div>
 <div class="item-row"><span class="tag-blue">属性</span> 全球流行度、评分、制作年份</div>
@@ -156,12 +123,12 @@ if len(st.session_state.history) == 0 and not active_prompt:
     cb1, cb2, cb3, cb4 = st.columns(4)
     cb1.button("📊 分析 4月 手游大盘", on_click=set_prompt, args=("分析 4月 手游大盘情况",), use_container_width=True)
     cb2.button("🎬 提取 豆瓣欧美剧 前 10名", on_click=set_prompt, args=("提取 豆瓣欧美剧前 10 名",), use_container_width=True)
-    cb3.button("🎮 分析 PC与直播 跨端大盘", on_click=set_prompt, args=("分析 Steam 与 直播榜单的大盘联动",), use_container_width=True)
+    cb3.button("🎮 分析 PC与直播 跨端大盘", on_click=set_prompt, args=("分析 Steam 与 国内外直播榜单的大盘联动",), use_container_width=True)
     cb4.button("🌐 生成 泛娱乐全行业 简报", on_click=set_prompt, args=("生成本月泛娱乐全行业综合分析简报",), use_container_width=True)
 
 st.markdown("---")
 
-# ================= 4. 核心路由引擎 (深度解耦直播逻辑) =================
+# ================= 4. 核心路由引擎 =================
 def run_spider(script, params):
     task_id = str(uuid.uuid4())[:8]
     out = f"res_{task_id}.csv"
@@ -204,25 +171,20 @@ def parse_intent(prompt):
         if is_pan or any(k in p for k in ["玩匠", "测", "手游", "大盘"]): 
             tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": l_hvy, "YEAR": year, "MONTH": month}})
             
-    # --- 2. PC 与 直播触发器 (深度解耦) ---
+    # --- 2. PC与直播触发器 (底层路由依然精准解耦) ---
     if is_pan or any(k in p for k in ["pc", "端游", "steam", "直播", "热度", "twitch", "播酱"]):
-        # PC Steam 判定
         if is_pan or any(k in p for k in ["steam", "pc", "端游"]): 
             tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": l_std}})
         
-        # 直播平台精确分发逻辑
         has_live = any(k in p for k in ["直播", "热度", "twitch", "播酱"])
         if is_pan or has_live:
             is_domestic = any(k in p for k in ["国内", "播酱", "大陆"])
             is_intl = any(k in p for k in ["国外", "海外", "twitch", "国际"])
             
-            # 只有明确提到国内，才只爬国内
             if is_domestic and not is_intl:
                 tasks.append({"script": "domestic_live.py", "env": {"SCRAPE_LIMIT": l_std}})
-            # 只有明确提到国外，才只爬国外
             elif is_intl and not is_domestic:
                 tasks.append({"script": "intl_live.py", "env": {"SCRAPE_LIMIT": l_std}})
-            # 如果只说了“直播”，或者泛娱乐大盘，那就全都爬
             else:
                 tasks.append({"script": "domestic_live.py", "env": {"SCRAPE_LIMIT": l_std}})
                 tasks.append({"script": "intl_live.py", "env": {"SCRAPE_LIMIT": l_std}})
@@ -237,7 +199,7 @@ def parse_intent(prompt):
             if "韩" in p: tags.append("韩剧")
             if "日" in p: tags.append("日剧")
             if "国产" in p: tags.append("国产剧")
-            if not tags: tags = ["欧美剧"] # 默认参照系
+            if not tags: tags = ["欧美剧"] 
             for t in tags:
                 tasks.append({"script": "douban.py", "env": {"SCRAPE_LIMIT": l_hvy, "DOUBAN_TAG": t}})
             
@@ -274,11 +236,10 @@ if active_prompt and len(st.session_state.history) > 0 and st.session_state.hist
                     st.error(f"❌ {task['script']} 执行失败")
 
             if all_dfs:
-                status.update(label=f"数据汇聚完成。正在依据【{analysis_mode}】生成商业简报...", state="running")
+                status.update(label=f"数据汇聚完成。正在生成商业简报...", state="running")
                 
                 ai_prompt = f"""
-                你是一位具备全局视野的商业分析师。当前用户的分析侧重点为：【{analysis_mode}】。
-                请基于以下底层采集的实时结构化数据，撰写商业简报。
+                你是一位具备全局视野的商业分析师。请基于以下底层采集的实时结构化数据，撰写商业简报。
                 
                 底层数据源：
                 {"\n\n".join(all_dfs)}
@@ -298,4 +259,4 @@ if active_prompt and len(st.session_state.history) > 0 and st.session_state.hist
                         st.error("AI 简报服务响应超时，请直接参考上方的数据表格进行研判。")
                 status.update(label="全部执行完毕", state="complete")
     else:
-        st.warning("⚠️ 无法识别有效路由，请参考上方的指令构造公式（如：提取 国内直播 前20名）。")
+        st.warning("⚠️ 无法识别有效路由，请参考上方的指令构造公式（如：分析 手游大盘）。")
