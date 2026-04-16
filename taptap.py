@@ -92,40 +92,46 @@ def get_game_list(driver):
             continue
     return game_list
 
-def get_platforms_data(driver):
+# === 核心修改点：化繁为简，只提取全局预约/关注总量 ===
+def get_single_metric(driver):
     def normalize_number(text):
         text = text.replace("人", "").replace(",", "").strip()
         try:
             if "万" in text:
-                num = float(re.sub(r"[^\d\.]", "", text)) * 10000
+                return int(float(re.sub(r"[^\d\.]", "", text)) * 10000)
             else:
-                num = float(re.sub(r"[^\d\.]", "", text))
-            return int(num)
+                return int(float(re.sub(r"[^\d\.]", "", text)))
         except:
-            return text
+            return 0
 
-    platforms_data = {}
-    try:
-        platform_buttons = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.platform-picker-switch__item"))
-        )
-        for i in range(len(platform_buttons)):
-            platform_buttons = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
-            button = platform_buttons[i]
-            platform_name = button.find_element(By.CLASS_NAME, "font-bold").text.strip()
-            driver.execute_script("arguments[0].click();", button)
-            time.sleep(1)
-            platform_info = {}
+    def grab_data():
+        try:
             info_boxes = driver.find_elements(By.CSS_SELECTOR, "div.single-info")
             for box in info_boxes:
                 key = box.find_element(By.CSS_SELECTOR, ".caption-m12-w12").text.strip()
                 val = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
                 if key in ["预约", "关注"]:
-                    platform_info[key] = normalize_number(val)
-            platforms_data[platform_name] = platform_info
+                    return normalize_number(val)
+        except:
+            pass
+        return 0
+
+    # 1. 优先尝试从默认加载的页面抓取总数
+    num = grab_data()
+    if num > 0:
+        return num
+        
+    # 2. 兜底方案：如果默认页没加载出来，尝试点击第一个平台按钮激活数据
+    try:
+        btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+        if btns:
+            driver.execute_script("arguments[0].click();", btns[0])
+            time.sleep(0.5)
+            return grab_data()
     except:
         pass
-    return platforms_data
+        
+    return 0
 
 def get_additional_info(driver):
     try:
@@ -140,13 +146,10 @@ def get_publisher(driver):
     """
     # === 策略 1：针对最新 HTML 结构 (包含“供应商”、“开发商”的单行文本) ===
     try:
-        # 寻找包含特定字眼的任何元素
         elements = driver.find_elements(By.XPATH, "//*[contains(text(), '供应商') or contains(text(), '发行商') or contains(text(), '开发商')]")
         for el in elements:
             text = el.text.strip()
-            # 过滤条件：确保是一句简短的话，而不是匹配到了整页的说明长文
             if 2 < len(text) < 40: 
-                # 动态清洗前缀和标点
                 for prefix in ["供应商", "发行商", "开发商", "厂商", ":", "：", " "]:
                     text = text.replace(prefix, "")
                 if text:
@@ -182,6 +185,9 @@ def get_intro_full(driver):
 
 def save_detailed_data_to_csv(data):
     df = pd.DataFrame(data)
+    # 强制限定并重排导出的列，抛弃冗余平台列
+    cols = ["排名", "名称", "标签", "厂商", "预约/关注量", "简介"]
+    df = df[[c for c in cols if c in df.columns]]
     df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
     print(f"File Saved: {OUTPUT_FILE}")
 
@@ -206,10 +212,13 @@ def main():
                 
                 driver.get(row["link"])
                 time.sleep(1)
-                detail = get_platforms_data(driver)
+                
                 tags_str = get_additional_info(driver)
                 factory = get_publisher(driver)
                 intro = get_intro_full(driver)
+                
+                # 直接获取合并后的整体数值
+                reserve_num = get_single_metric(driver)
 
                 result = {
                     "排名": row["rank"],
@@ -217,13 +226,8 @@ def main():
                     "简介": intro[:150] + "..." if len(intro) > 150 else intro,  
                     "标签": tags_str,
                     "厂商": factory,
+                    "预约/关注量": reserve_num if reserve_num > 0 else "暂无数据"
                 }
-                # 整合平台数据
-                for plat in ["安卓", "iOS", "PC端"]:
-                    if plat in detail:
-                        result[f"{plat}平台"] = str(detail[plat])
-                    else:
-                        result[f"{plat}平台"] = ""
 
                 results.append(result)
             except Exception as e:
