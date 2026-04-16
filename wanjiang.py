@@ -37,7 +37,7 @@ def init_driver():
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
     
-    # === 核心修复 1：强制伪装真实用户的 User-Agent，洗掉 Headless 痕迹 ===
+    # 强制伪装真实用户的 User-Agent
     ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     options.add_argument(f'user-agent={ua}')
 
@@ -100,24 +100,41 @@ def get_game_list_from_16p(driver):
     driver.get("https://www.16p.com/newgame")
     wait = WebDriverWait(driver, 15)
 
-    # 切换年月
+    # === 核心修复 1：适配全新日历组件 ===
     while True:
         try:
-            ym = wait.until(EC.presence_of_element_located((By.XPATH, "//div[@class='v-date-picker-header__value']//button")))
-            if ym.text.strip() == MONTH_KEY: break
-            driver.find_element(By.XPATH, "//i[contains(@class, 'mdi-chevron-left')]").click()
-            time.sleep(0.5)
-        except: break
+            # 获取新版日历标题 <div class="dp-title">
+            ym_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".dp-title")))
+            current_ym = ym_element.text.strip()
+            
+            if current_ym == MONTH_KEY: 
+                break
+            
+            # 点击新版日历左侧箭头 <button class="dp-nav">‹</button>
+            nav_btns = driver.find_elements(By.CSS_SELECTOR, "button.dp-nav")
+            if nav_btns:
+                driver.execute_script("arguments[0].click();", nav_btns[0])
+                time.sleep(0.8)
+            else:
+                break
+        except Exception as e: 
+            print(f"切换月份结束或异常: {e}")
+            break
     
-    # 点击 1 日
+    # === 核心修复 2：点击当月 1 号 ===
     try: 
-        wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'1日')]"))).click()
-        # === 核心修复 2：点击后强制等待，给 Vue 异步加载数据的空间 ===
-        time.sleep(3) 
+        # 获取新版日期的 span
+        days = driver.find_elements(By.CSS_SELECTOR, ".dp-grid--days .dp-cell")
+        for day in days:
+            if day.text.strip() == "1" and "is-empty" not in day.get_attribute("class"):
+                driver.execute_script("arguments[0].click();", day)
+                print("成功点击当月 1 日，等待数据加载...")
+                time.sleep(3) # 强制等待 Vue 异步拉取数据
+                break
     except Exception as e: 
         print(f"点击日期警告: {e}")
     
-    # 强制定位列表框，不要用 try 吞掉报错
+    # 定位列表框
     try:
         feed = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.van-list[role='feed']")))
     except Exception:
@@ -127,7 +144,7 @@ def get_game_list_from_16p(driver):
     # 滚动加载
     for _ in range(15): 
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(0.8)
+        time.sleep(1)
 
     results = []
     seen = set()
@@ -135,13 +152,20 @@ def get_game_list_from_16p(driver):
         items = feed.find_elements(By.CSS_SELECTOR, "div.date-item")
         rank = 1
         for item in items:
-            date = item.find_element(By.CSS_SELECTOR, ".date_div > span").text.strip()
+            # === 核心修复 3：精准提取日期跨度结构 ===
+            spans = item.find_elements(By.CSS_SELECTOR, ".date_div span")
+            if not spans: continue
+            date = spans[0].text.strip()
+            
             if not date.startswith(TARGET_MONTH): continue
             
             games = item.find_elements(By.CSS_SELECTOR, "a.game-item")
             for g in games:
                 if "上线" in g.text: continue
-                name = g.find_element(By.CSS_SELECTOR, ".game-info-1 > span").text.strip()
+                name_span = g.find_elements(By.CSS_SELECTOR, ".game-info-1 span")
+                if not name_span: continue
+                name = name_span[0].text.strip()
+                
                 if name not in seen:
                     results.append({"rank": rank, "name": name, "date": date})
                     seen.add(name)
