@@ -16,56 +16,38 @@ else:
 BASE_URL = "https://api.deepseek.com"
 CLIENT = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
-st.set_page_config(page_title="战略研究-市场情报提取 Agent", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="市场情报提取 Agent", layout="wide", page_icon="🛡️")
 
 # --- 1. UI 头部设计 ---
-st.title("🛡️ 战略研究-市场数据自动化提取与分析 Agent")
+st.title("🛡️ 市场数据自动化提取与分析 Agent")
 st.markdown("---")
 
-# --- 2. 左侧边栏：控制面板 (视觉减负优化) ---
+# --- 2. 左侧边栏：控制面板 ---
 with st.sidebar:
     st.markdown("### 🎛️ 系统控制")
-    # 移除全宽属性，增加 Tooltip，让按钮更精致小巧
     if st.button("🧹 清空会话与输出", help="一键重置当前界面的所有历史对话与表格"):
         st.session_state.history = []
         st.rerun()
     
-    st.divider() # 添加优雅的分割线
-
+    st.divider() 
+    
     st.markdown("**系统监控状态**")
-    st.caption("""
-    🟢 容器化运行: 正常  
-    🟢 数据流监听: 开启
-    """) 
+    st.caption("🟢 容器化运行: 正常")
+    st.caption("🟢 数据流监听: 开启")
+    st.caption("🟢 多源聚合调度: 开启")
 
-
-# --- 3. 数据源与规格说明 (保留清晰排版) ---
+# --- 3. 数据源说明 ---
 with st.expander("📌 数据源规格与指令说明", expanded=True):
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("### 🎮 TapTap 预约榜")
-        st.markdown("""
-        * **时效范围**：实时数据
-        * **包含字段**：排名、简介、标签、预约量
-        * **提取限制**：仅限当前最新排名，不支持历史回溯
-        * **指令示例**：`提取 taptap 预约榜前 5 名`
-        """)
-    with col2:
-        st.markdown("### 🕹️ Steam 愿望榜")
-        st.markdown("""
-        * **时效范围**：实时数据（含近7/30日热度变化）
-        * **包含字段**：排名、热度增量、开发/发行商
-        * **提取限制**：受限性能，单次提取建议不超过 200 条
-        * **指令示例**：`分析 steam 愿望榜前 50 名`
-        """)
-    with col3:
-        st.markdown("### 🎬 IMDb 影视榜")
-        st.markdown("""
-        * **时效范围**：按自然月度支持历史回溯
-        * **包含字段**：排名、名称、评分、链接
-        * **提取限制**：查询需具体的年份与月份
-        * **指令示例**：`提取 imdb 2026年3月前 5 名`
-        """)
+    st.markdown("""
+    本系统支持单点快速查询与**大盘聚合分析**，目前接入了三大典型代表数据源（未来可无限扩展）：
+    * **🎮 TapTap 预约榜**：实时反映国内手游大盘动向。
+    * **🕹️ Steam 愿望榜**：实时追踪全球 PC 端游热度动能。
+    * **🎬 IMDb 影视榜**：按月回溯全球泛娱乐影视 IP 趋势。
+    
+    **💡 进阶指令示例（多源聚合分析）**：
+    * `分析目前所有游戏整体情况`（系统将自动拉满 200 条，同时抓取 TapTap 和 Steam 进行跨端对比）
+    * `分析手游大盘整体情况`（自动拉满 TapTap 数据进行深度分析）
+    """)
 
 # --- 4. 实时调度内核 ---
 def run_spider_with_progress(script_name, params):
@@ -101,7 +83,7 @@ def run_spider_with_progress(script_name, params):
         if line:
             clean_line = line.strip()
             full_logs.append(clean_line)
-            log_area.caption(f"⚙️ Kernel Log: {clean_line}")
+            log_area.caption(f"⚙️ 核心日志 [{script_name}]: {clean_line}")
 
             progress_match = re.search(r"\[(\d+)/(\d+)\]", clean_line)
             if progress_match:
@@ -112,21 +94,33 @@ def run_spider_with_progress(script_name, params):
     return_code = process.wait()
     return return_code, output_csv, "\n".join(full_logs)
 
-# --- 5. 意图解析器 ---
+# --- 5. 多源意图解析器 (核心升级) ---
 def parse_intent(prompt):
+    p_lower = prompt.lower()
     limit = re.search(r'(\d+)', prompt).group(1) if re.search(r'(\d+)', prompt) else "5"
     date_match = re.search(r'(\d{4})[年-]\s*(\d{1,2})', prompt)
     year = date_match.group(1) if date_match else "2026"
     month = date_match.group(2) if date_match else "02"
 
-    p_lower = prompt.lower()
-    if "steam" in p_lower:
-        return "steam.py", {"SCRAPE_LIMIT": limit}
+    tasks = []
+    
+    # 宏观聚合指令路由
+    if "所有游戏" in p_lower or "全局" in p_lower or ("整体" in p_lower and "游戏" in p_lower):
+        tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": "200"}})
+        tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": "200"}})
+    elif "手游" in p_lower and ("整体" in p_lower or "大盘" in p_lower):
+        tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": "200"}})
+    elif ("端游" in p_lower or "pc" in p_lower) and ("整体" in p_lower or "大盘" in p_lower):
+        tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": "200"}})
+    # 单一精细指令路由
+    elif "steam" in p_lower:
+        tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": limit}})
     elif "tap" in p_lower:
-        return "taptap.py", {"SCRAPE_LIMIT": limit}
+        tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": limit}})
     elif "imdb" in p_lower:
-        return "imdb.py", {"SCRAPE_LIMIT": limit, "YEAR": year, "MONTH": month}
-    return None, None
+        tasks.append({"script": "imdb.py", "env": {"SCRAPE_LIMIT": limit, "YEAR": year, "MONTH": month}})
+        
+    return tasks
 
 # --- 6. 核心对话流 ---
 if "history" not in st.session_state:
@@ -136,33 +130,60 @@ for chat in st.session_state.history:
     with st.chat_message(chat["role"]):
         st.markdown(chat["content"])
 
-if prompt := st.chat_input("输入提取指令 (参考上方指令示例)..."):
+if prompt := st.chat_input("输入提取指令 (例：分析目前所有游戏整体情况)..."):
     st.session_state.history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    script_file, env_vars = parse_intent(prompt)
+    tasks = parse_intent(prompt)
 
-    if script_file:
-        with st.status(f"执行中：调用 `{script_file}` 内核...", expanded=True) as status:
-            ret_code, res_csv, final_logs = run_spider_with_progress(script_file, env_vars)
+    if tasks:
+        combined_md_list = []
+        total_data_count = 0
+        has_error = False
 
-            if ret_code == 0 and os.path.exists(res_csv):
-                df = pd.read_csv(res_csv)
-                data_count = len(df)
-                st.success(f"任务完成：成功加载 {data_count} 条数据。")
-                st.dataframe(df)
-
-                data_md = df.to_markdown(index=False)
+        with st.status(f"🚀 执行中：识别到 {len(tasks)} 个采集任务，正在下发调度...", expanded=True) as status:
+            # 依次执行任务队列
+            for task in tasks:
+                script_file = task["script"]
+                env_vars = task["env"]
                 
-                # === 根据数据量动态生成分析策略 ===
-                if data_count <= 10:
-                    analysis_strategy = "提取核心标的信息。请直接以精炼的列表形式输出这几款产品的关键数据表现，不做发散性的宏观趋势分析。"
+                st.write(f"🔄 正在拉起 `{script_file}` 数据引擎...")
+                ret_code, res_csv, final_logs = run_spider_with_progress(script_file, env_vars)
+
+                if ret_code == 0 and os.path.exists(res_csv):
+                    df = pd.read_csv(res_csv)
+                    data_len = len(df)
+                    total_data_count += data_len
+                    st.success(f"✅ `{script_file}` 采集完成，成功加载 {data_len} 条数据。")
+                    
+                    # 在界面展示该部分数据
+                    st.dataframe(df)
+                    
+                    # 拼接到传给大模型的总 Markdown 中
+                    source_name = "手游大盘数据" if "tap" in script_file else "PC端大盘数据" if "steam" in script_file else "影视大盘数据"
+                    combined_md_list.append(f"### 【{source_name}】\n" + df.to_markdown(index=False))
+                    os.remove(res_csv)
                 else:
-                    analysis_strategy = "进行宏观数据概览。重点关注：1. 头部厂商/开发者的集中度；2. 增速最快（热度增量高）的标的；3. 整体品类分布特征。客观简练，避免过度口语化。"
+                    has_error = True
+                    st.error(f"❌ `{script_file}` 执行失败，日志详情：")
+                    with st.expander("展开内核日志"):
+                        st.code(final_logs)
+
+            if not has_error and total_data_count > 0:
+                status.update(label=f"数据采集完毕，共计获取 {total_data_count} 条核心数据，开始战略洞察...", state="running")
+                
+                # === 动态分析策略：区分单源与多源聚合 ===
+                if len(tasks) > 1:
+                    analysis_strategy = "本次分析包含【跨平台】（如手游与PC端）的多源海量数据。请在宏观概览的基础上，增加『跨平台趋势对比』，分析不同平台的品类偏好、大厂布局差异等。重点提炼 4-5 个高价值的行业级结论。"
+                elif total_data_count <= 10:
+                    analysis_strategy = "提取核心标的信息。请直接以精炼的无序列表形式输出这几款产品的关键数据表现，不做发散性的宏观趋势分析。"
+                else:
+                    analysis_strategy = "进行宏观数据概览。重点关注：1. 头部厂商的集中度；2. 增速最快的标的；3. 整体品类分布特征。客观简练，避免过度口语化。"
+
+                final_data_md = "\n\n".join(combined_md_list)
 
                 with st.chat_message("assistant"):
-                    # === 最终版专业大模型分析 Prompt ===
                     ai_prompt = f"""
 你是一位顶尖的【泛娱乐与游戏行业商业分析师】。
 请基于提供的实时抓取数据，精准响应用户需求。你的输出将直接作为高管汇报的 Brief，必须具备极高的“信息密度”和“专业度”。
@@ -170,24 +191,24 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令示例)..."):
 【核心输入】
 - 用户需求：{prompt}
 - 分析策略：{analysis_strategy}
-- 原始数据表：
-{data_md}
+- 原始多源数据表：
+{final_data_md}
 
 【分析准则：三大纪律】
-1. 事实绝对保真：所有结论必须且只能从《原始数据表》中推导，严禁引入外部记忆或主观猜测。
-2. 拒绝数据复读：不要把表格变成文字“报菜名”，必须提炼出数据背后的“业务特征”（如：资源集中度、断层领先、品类趋势等）。
-3. 拒绝废话文学：严禁使用“整体表现良好”、“值得期待”等无信息量的空话。若数据不足以支撑某个维度，直接跳过。
+1. 事实绝对保真：所有结论必须且只能从《原始多源数据表》中推导，严禁引入外部记忆或主观猜测。
+2. 拒绝数据复读：必须提炼出数据背后的“业务特征”（如：资源集中度、跨端平台壁垒、品类趋势等）。
+3. 拒绝废话文学：严禁使用“整体表现良好”等无信息量空话。若数据不足直接跳过。
 
 【输出排版规范】
 请严格遵循以下排版（无需开场白或解释过程，直接输出）：
 
 👉 如果【分析策略】要求简报（数据较少时）：
-直接使用紧凑的无序列表，提炼各标的的核心数值特征即可。
+直接使用紧凑的无序列表，提炼各标的的核心数值特征。
 
-👉 如果【分析策略】要求宏观概览（数据较多时），请提炼 3-5 个最有价值的点，并严格按照以下格式输出：
-### 💡 [提炼具有行业视角的小标题，如：大厂垄断头部，断层优势明显]
-- **数据支撑**：[提取表格中的具体排名、数值差距或集中度占比]
-- **业务结论**：[客观说明该数据反映的竞争格局或市场结构特征]
+👉 如果【分析策略】包含宏观概览或跨平台对比时，请严格按照以下格式输出：
+### 💡 [提炼具有行业视角的小标题，如：大厂垄断移动端，独立游戏突围PC端]
+- **数据**：[提取跨平台表格中的具体排名、占比或数值对比，数字使用**加粗**]
+- **结论**：[客观说明该现象反映的竞争格局，并在句末附上一句“战略启示/应对建议”]
 
 开始执行：
                     """
@@ -201,16 +222,11 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令示例)..."):
                         st.markdown(ans)
                         st.session_state.history.append({"role": "assistant", "content": ans})
                     except:
-                        st.error("API 调用超时，请直接查看原始数据。")
-
+                        st.error("API 调用超时，请直接查看上方原始数据。")
+                
                 status.update(label="处理完毕", state="complete")
-                if os.path.exists(res_csv):
-                    os.remove(res_csv)
             else:
-                st.error("执行失败，日志详情：")
-                with st.expander("展开内核日志"):
-                    st.code(final_logs)
-                st.info("提示：若出现 Timeout，请减少单次提取数量或稍后重试。")
+                status.update(label="调度终止", state="error")
 
     else:
-        st.warning("指令无法解析。请确保包含关键字 (taptap / steam / imdb)。")
+        st.warning("指令无法解析。请确保包含关键字 (如：手游整体情况 / 所有游戏大盘 / taptap / steam)。")
