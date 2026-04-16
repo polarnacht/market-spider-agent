@@ -53,9 +53,6 @@ def scroll_to_bottom_then_top(driver, wait_time=1):
     driver.execute_script("window.scrollTo(0, 0);")
     time.sleep(wait_time)
 
-def get_absolute_link(href, base_url=BASE_URL):
-    return base_url + href if href.startswith("/") else href
-
 def get_game_list(driver):
     print("正在滚动加载首页榜单数据...")
     scroll_to_bottom_then_top(driver)
@@ -66,61 +63,60 @@ def get_game_list(driver):
             rank = game.find_element(By.CSS_SELECTOR, "span.rank-index").text.strip()
             name = game.find_element(By.CSS_SELECTOR, "div.text-with-tags.app-title span.text-default--size").text.strip()
             links = game.find_elements(By.CSS_SELECTOR, "a[href^='/app/']")
-            link = get_absolute_link(links[0].get_attribute("href")) if links else ""
+            link = (BASE_URL + links[0].get_attribute("href") if links[0].get_attribute("href").startswith("/") else links[0].get_attribute("href")) if links else ""
             game_list.append({"rank": rank, "name": name, "link": link})
         except: continue
     return game_list
 
-# === 恢复最强提取逻辑：遍历所有端，取最大值 ===
+# === 融合了原版最强“轮播图备用提取”的取最大值函数 ===
 def get_max_reserve_num(driver):
     def normalize_number(text):
-        if not text: return 0
-        text = text.replace(" ", "").replace(",", "").replace("人", "").strip()
+        text = str(text).replace("人", "").replace(",", "").strip()
         try:
-            if "万" in text:
-                num = re.search(r"[\d\.]+", text).group()
-                return int(float(num) * 10000)
-            elif "亿" in text:
-                num = re.search(r"[\d\.]+", text).group()
-                return int(float(num) * 100000000)
-            else:
-                num = re.sub(r"[^\d]", "", text)
-                return int(num) if num else 0
+            if "万" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 10000)
+            elif "亿" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 100000000)
+            else: return int(float(re.sub(r"[^\d\.]", "", text) or 0))
         except: return 0
 
-    def scrape_current_stats():
-        max_val = 0
+    def extract_current_view():
+        max_current = 0
+        # 主方式
         try:
-            boxes = driver.find_elements(By.CSS_SELECTOR, ".single-info__content")
-            for box in boxes:
-                txt = box.text.strip()
-                if "预约" in txt or "关注" in txt:
-                    try:
-                        val_str = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
-                        val = normalize_number(val_str)
-                        if val > max_val: max_val = val
-                    except: continue
+            for box in driver.find_elements(By.CSS_SELECTOR, "div.single-info"):
+                key = box.find_element(By.CSS_SELECTOR, ".caption-m12-w12").text.strip()
+                val = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
+                if key in ["预约", "关注"]:
+                    max_current = max(max_current, normalize_number(val))
         except: pass
-        return max_val
-
-    # 先等元素渲染
-    try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content")))
-    except: pass
+        
+        # 备用方式 (完全复刻你的逻辑)
+        if max_current == 0:
+            try:
+                for box in driver.find_elements(By.CSS_SELECTOR, "div.swiper-slide"):
+                    spans = box.find_elements(By.TAG_NAME, "span")
+                    if len(spans) >= 2:
+                        val = spans[0].text.strip()
+                        key = spans[1].text.strip()
+                        if key in ["预约", "关注"]:
+                            max_current = max(max_current, normalize_number(val))
+            except: pass
+        return max_current
 
     global_max = 0
-    try: btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
-    except: btns = []
-
-    if btns:
-        for btn in btns:
+    try:
+        platform_buttons = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.platform-picker-switch__item"))
+        )
+        for btn in platform_buttons:
             try:
-                driver.execute_script("arguments[0].click();", btn)
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
                 time.sleep(0.5)
-                current_val = scrape_current_stats()
-                if current_val > global_max: global_max = current_val
-            except: pass
-    else:
-        global_max = scrape_current_stats()
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(1)
+                global_max = max(global_max, extract_current_view())
+            except: continue
+    except:
+        global_max = extract_current_view()
         
     return global_max
 
@@ -142,21 +138,34 @@ def get_publisher(driver):
     except: pass
     return "暂无信息"
 
+# === 完美复刻你的“展开更多”简介抓取方案 ===
 def get_intro_full(driver):
     try:
         summary = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.app-intro__summary")))
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", summary)
+        time.sleep(0.3)
         driver.execute_script("arguments[0].click();", summary)
         time.sleep(0.5)
-        return WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14"))).text.strip()
+        try:
+            summary_div = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14")))
+            intro_text = summary_div.text.strip()
+            if intro_text: return intro_text
+            
+            more_button = summary_div.find_element(By.CSS_SELECTOR, "div.text-modal__more.clickable span")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
+            driver.execute_script("arguments[0].click();", more_button)
+            time.sleep(0.5)
+            
+            full_intro = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-modal__text"))).get_attribute("innerText").strip()
+            return full_intro
+        except: return ""
     except: return ""
 
 def main():
     print(f"TapTap Kernel Running: Target Top {SCRAPE_LIMIT}")
     driver = init_driver()
-    url = "https://www.taptap.cn/top/reserve"
-    
     try:
-        driver.get(url)
+        driver.get("https://www.taptap.cn/top/reserve")
         time.sleep(3) 
 
         games = get_game_list(driver)
@@ -173,8 +182,6 @@ def main():
                 tags_str = get_additional_info(driver)
                 factory = get_publisher(driver)
                 intro = get_intro_full(driver)
-                
-                # === 直接调用新融合的获取最高预约量函数 ===
                 reserve_num = get_max_reserve_num(driver)
 
                 results.append({
@@ -193,8 +200,7 @@ def main():
             df = df[[c for c in cols if c in df.columns]]
             df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
             print(f"File Saved: {OUTPUT_FILE}")
-        else:
-            print("未能抓取到任何有效数据。")
+        else: print("未能抓取到任何有效数据。")
     finally:
         driver.quit()
 
