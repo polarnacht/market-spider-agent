@@ -10,9 +10,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-
-# === 屏蔽警告并强制 UTF-8 输出 ===
 import warnings
+
 warnings.filterwarnings("ignore")
 if sys.stdout.encoding != 'utf-8':
     import io
@@ -62,51 +61,68 @@ def get_game_list(driver):
     scroll_to_bottom_then_top(driver)
     games = driver.find_elements(By.CSS_SELECTOR, "div.rank-game-cell")
     game_list = []
-
-    for i, game in enumerate(games[:SCRAPE_LIMIT]):
+    for game in games[:SCRAPE_LIMIT]:
         try:
             rank = game.find_element(By.CSS_SELECTOR, "span.rank-index").text.strip()
             name = game.find_element(By.CSS_SELECTOR, "div.text-with-tags.app-title span.text-default--size").text.strip()
             links = game.find_elements(By.CSS_SELECTOR, "a[href^='/app/']")
             link = get_absolute_link(links[0].get_attribute("href")) if links else ""
             game_list.append({"rank": rank, "name": name, "link": link})
-        except Exception: continue
+        except: continue
     return game_list
 
-def get_single_metric(driver):
-    """加入强制等待机制，解决异步渲染抓空问题"""
+# === 恢复最强提取逻辑：遍历所有端，取最大值 ===
+def get_max_reserve_num(driver):
     def normalize_number(text):
-        text = text.replace("人", "").replace(",", "").strip()
+        if not text: return 0
+        text = text.replace(" ", "").replace(",", "").replace("人", "").strip()
         try:
-            if "万" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 10000)
-            else: return int(float(re.sub(r"[^\d\.]", "", text)))
+            if "万" in text:
+                num = re.search(r"[\d\.]+", text).group()
+                return int(float(num) * 10000)
+            elif "亿" in text:
+                num = re.search(r"[\d\.]+", text).group()
+                return int(float(num) * 100000000)
+            else:
+                num = re.sub(r"[^\d]", "", text)
+                return int(num) if num else 0
         except: return 0
 
-    def grab_data():
+    def scrape_current_stats():
+        max_val = 0
         try:
-            for box in driver.find_elements(By.CSS_SELECTOR, "div.single-info"):
-                key = box.find_element(By.CSS_SELECTOR, ".caption-m12-w12").text.strip()
-                val = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
-                if key in ["预约", "关注"]: return normalize_number(val)
+            boxes = driver.find_elements(By.CSS_SELECTOR, ".single-info__content")
+            for box in boxes:
+                txt = box.text.strip()
+                if "预约" in txt or "关注" in txt:
+                    try:
+                        val_str = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
+                        val = normalize_number(val_str)
+                        if val > max_val: max_val = val
+                    except: continue
         except: pass
-        return 0
+        return max_val
 
-    try:
-        # === 核心修复：等平台按钮出来，点一下并缓冲 ===
-        btns = WebDriverWait(driver, 4).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.platform-picker-switch__item"))
-        )
-        driver.execute_script("arguments[0].click();", btns[0])
-        time.sleep(1) # 等待数据加载
-    except:
-        try:
-            # === 如果单平台没有按钮，直接等数值框渲染 ===
-            WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div.single-info"))
-            )
-        except: pass
+    # 先等元素渲染
+    try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content")))
+    except: pass
 
-    return grab_data()
+    global_max = 0
+    try: btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+    except: btns = []
+
+    if btns:
+        for btn in btns:
+            try:
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(0.5)
+                current_val = scrape_current_stats()
+                if current_val > global_max: global_max = current_val
+            except: pass
+    else:
+        global_max = scrape_current_stats()
+        
+    return global_max
 
 def get_additional_info(driver):
     try: return ", ".join([tag.text.strip() for tag in driver.find_elements(By.CSS_SELECTOR, "a.app-intro__tag-item")])
@@ -134,13 +150,6 @@ def get_intro_full(driver):
         return WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14"))).text.strip()
     except: return ""
 
-def save_detailed_data_to_csv(data):
-    df = pd.DataFrame(data)
-    cols = ["排名", "名称", "标签", "厂商", "预约/关注量", "简介"]
-    df = df[[c for c in cols if c in df.columns]]
-    df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-    print(f"File Saved: {OUTPUT_FILE}")
-
 def main():
     print(f"TapTap Kernel Running: Target Top {SCRAPE_LIMIT}")
     driver = init_driver()
@@ -148,7 +157,7 @@ def main():
     
     try:
         driver.get(url)
-        time.sleep(3)
+        time.sleep(3) 
 
         games = get_game_list(driver)
         results = []
@@ -159,12 +168,14 @@ def main():
                 print(f"[{i+1}/{total_games}] Processing Detail: {row['name']}")
                 
                 driver.get(row["link"])
-                # 这里无需额外 sleep，因为 get_single_metric 里面已经加了智能等待
+                time.sleep(1)
                 
                 tags_str = get_additional_info(driver)
                 factory = get_publisher(driver)
                 intro = get_intro_full(driver)
-                reserve_num = get_single_metric(driver)
+                
+                # === 直接调用新融合的获取最高预约量函数 ===
+                reserve_num = get_max_reserve_num(driver)
 
                 results.append({
                     "排名": row["rank"],
@@ -176,8 +187,14 @@ def main():
                 })
             except Exception: continue
 
-        if results: save_detailed_data_to_csv(results)
-        else: print("未能抓取到任何有效数据。")
+        if results:
+            df = pd.DataFrame(results)
+            cols = ["排名", "名称", "标签", "厂商", "预约/关注量", "简介"]
+            df = df[[c for c in cols if c in df.columns]]
+            df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
+            print(f"File Saved: {OUTPUT_FILE}")
+        else:
+            print("未能抓取到任何有效数据。")
     finally:
         driver.quit()
 
