@@ -18,28 +18,40 @@ st.markdown("""
     <style>
     .main { background-color: #F8FAFC; }
     /* 卡片与排版 */
-    .dashboard-card { background: white; border: 1px solid #E2E8F0; padding: 15px 20px; border-radius: 8px; height: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .dashboard-card { background: white; border: 1px solid #E2E8F0; padding: 20px; border-radius: 8px; height: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
     .card-title { font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 12px; border-bottom: 2px solid #3B82F6; padding-bottom: 6px; display: inline-block;}
-    .item-title { font-weight: 600; color: #334155; margin-top: 5px; margin-bottom: 4px; font-size: 0.95rem; }
-    .item-row { font-size: 0.85rem; color: #475569; margin-bottom: 3px; display: flex; align-items: center; }
+    .item-title { font-weight: 600; color: #334155; margin-top: 10px; margin-bottom: 4px; font-size: 0.95rem; }
+    .item-row { font-size: 0.85rem; color: #475569; margin-bottom: 3px; display: flex; align-items: flex-start; }
     /* 精简标签 */
-    .tag-blue { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
-    .tag-red { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
-    .tag-green { background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
-    /* 快捷按钮 */
-    .stButton>button { border-radius: 6px; }
-    /* 提示词框 */
-    .prompt-box { background: white; border: 1px solid #E2E8F0; padding: 12px 15px; border-radius: 8px; font-size: 0.9rem;}
+    .tag-blue { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; flex-shrink: 0;}
+    .tag-red { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; flex-shrink: 0;}
+    .tag-green { background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; flex-shrink: 0;}
+    /* 提示词框与分隔 */
+    .guide-container { background: white; border: 1px solid #E2E8F0; padding: 20px; border-radius: 8px; margin-bottom: 30px;}
+    .guide-col { border-left: 3px solid #3B82F6; padding-left: 15px; }
     code { color: #0369A1 !important; background: #F0F9FF !important; }
+    .stButton>button { border-radius: 6px; }
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 状态初始化与顶栏 =================
+# ================= 2. 状态初始化与侧边栏 =================
 if "history" not in st.session_state: st.session_state.history = []
 if "trigger_prompt" not in st.session_state: st.session_state.trigger_prompt = None
 
 def set_prompt(val): st.session_state.trigger_prompt = val
 
+with st.sidebar:
+    st.markdown("### 📝 报告生成偏好")
+    st.caption("设置下方选项，控制 AI 自动生成商业简报的分析视角。")
+    analysis_mode = st.radio(
+        "分析侧重点",
+        ["大盘趋势与数据概览", "潜力爆款特征挖掘", "赛道竞品数据对比", "跨端影游联动分析"],
+        label_visibility="collapsed"
+    )
+    st.divider()
+    st.caption(f"📅 系统日期：{datetime.now().strftime('%Y-%m-%d')}")
+
+# 顶部 Title 与 重置按钮
 col_t1, col_t2 = st.columns([5, 1])
 with col_t1:
     st.title("🌐 泛娱乐市场情报 Agent")
@@ -50,78 +62,106 @@ with col_t2:
         st.session_state.trigger_prompt = None
         st.rerun()
 
-# 判断是否是第一次加载
-is_first_load = len(st.session_state.history) == 0
+# 获取用户输入
+user_input = st.chat_input("请输入指令 (例：分析 4月 手游大盘)...")
+active_prompt = st.session_state.trigger_prompt or user_input
 
-# ================= 3. 永久平铺的说明书面板 (取消折叠) =================
-st.markdown("### 📖 指令规范与数据源明细")
-
-cp1, cp2 = st.columns(2)
-with cp1:
-    st.markdown(
-"""<div class="prompt-box">
-<b>🎯 单点深度抓取</b> <span style="color:#64748B;">(用于精确提取品类榜单)</span><br>
-语法：<code>提取 [时间/分类] [数据源] 前[N]名</code><br>
-示例：提取 豆瓣韩剧 前20名
-</div>""", unsafe_allow_html=True)
-with cp2:
-    st.markdown(
-"""<div class="prompt-box">
-<b>🌐 宏观大盘联动</b> <span style="color:#64748B;">(跨模块并发抓取，生成研报)</span><br>
-语法：<code>分析 [时间] [行业大类]</code><br>
-示例：生成 4月 泛娱乐全行业简报
-</div>""", unsafe_allow_html=True)
+# ================= 3. 欢迎面板 (首次无对话时展现) =================
+if len(st.session_state.history) == 0 and not active_prompt:
+    st.write("")
     
-st.write("")
+    # --- 模块 A: 指令指南 ---
+    st.markdown("### 💡 核心指令构造指南")
+    st.markdown("""
+    <div class="guide-container">
+        <div style="display: flex; gap: 40px;">
+            <div style="flex: 1;" class="guide-col">
+                <b style="font-size:1.05rem; color:#0F172A;">🎯 单点深度提取</b> <span style="color:#64748B; font-size:0.85rem;">(用于精准获取某个榜单的数据)</span><br>
+                <div style="margin-top: 8px; font-size:0.9rem;">
+                <b>语法：</b> <code>提取 [时间/分类] [数据源] 前[N]名</code><br>
+                <b>示例：</b> 提取 国内直播 前50名<br>
+                <b>示例：</b> 提取 Twitch直播 前20名
+                </div>
+            </div>
+            <div style="flex: 1;" class="guide-col">
+                <b style="font-size:1.05rem; color:#0F172A;">🌐 宏观大盘联动</b> <span style="color:#64748B; font-size:0.85rem;">(并发拉起多个数据源，生成研报)</span><br>
+                <div style="margin-top: 8px; font-size:0.9rem;">
+                <b>语法：</b> <code>分析 [时间] [行业大类]</code><br>
+                <b>示例：</b> 分析 直播大盘情况 <i>(自动并发国内外)</i><br>
+                <b>示例：</b> 生成 4月 泛娱乐全行业简报
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-cd1, cd2, cd3 = st.columns(3)
-with cd1:
-    st.markdown(
+    # --- 模块 B: 数据源明细 (3x3 工整排版，细化直播分类) ---
+    st.markdown("### 🗂️ 挂载数据源能力")
+    cd1, cd2, cd3 = st.columns(3)
+    
+    with cd1:
+        st.markdown(
 """<div class="dashboard-card">
 <div class="card-title">📱 手游模块</div>
 <div class="item-title">TapTap 预约榜</div>
+<div class="item-row"><span class="tag-blue">属性</span> 累计预约量、厂商、标签</div>
+<div class="item-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
 <div class="item-row"><span class="tag-red">限制</span> 仅实时快照，无历史回溯</div>
-<div class="item-title" style="margin-top: 15px;">玩匠(16P) 开测榜</div>
-<div class="item-row"><span class="tag-blue">参数</span> 指定年份、月份</div>
-<div class="item-row"><span class="tag-green">支持</span> 历史大盘数据回溯</div>
+
+<div class="item-title" style="margin-top: 20px;">玩匠(16P) 开测榜</div>
+<div class="item-row"><span class="tag-blue">属性</span> 测试节点、最高关联预约</div>
+<div class="item-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>
+<div class="item-row"><span class="tag-red">限制</span> 详情页穿透较慢，大盘限50条</div>
 </div>""", unsafe_allow_html=True)
 
-with cd2:
-    st.markdown(
+    with cd2:
+        st.markdown(
 """<div class="dashboard-card">
 <div class="card-title">💻 PC & 直播模块</div>
-<div class="item-title">Steam 愿望榜</div>
+<div class="item-title" style="margin-top: 0px;">Steam 愿望榜</div>
+<div class="item-row"><span class="tag-blue">属性</span> 游戏名、近期热度增量</div>
+<div class="item-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
 <div class="item-row"><span class="tag-red">限制</span> 实时接口，单次建议100条内</div>
-<div class="item-title" style="margin-top: 15px;">国内外直播活跃榜</div>
-<div class="item-row"><span class="tag-blue">参数</span> 国内(播酱) / 国外(Twitch)</div>
-<div class="item-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>
+
+<div class="item-title" style="margin-top: 15px;">国内直播榜 (播酱)</div>
+<div class="item-row"><span class="tag-blue">属性</span> 活跃观众、弹幕、礼物总值</div>
+<div class="item-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
+<div class="item-row"><span class="tag-red">限制</span> 按自然月统计算法，有滞后</div>
+
+<div class="item-title" style="margin-top: 15px;">国外直播榜 (Twitch)</div>
+<div class="item-row"><span class="tag-blue">属性</span> 峰值观众、频道数、观看时长</div>
+<div class="item-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
+<div class="item-row"><span class="tag-red">限制</span> 滚动统计近 30 日实时快照</div>
 </div>""", unsafe_allow_html=True)
 
-with cd3:
-    st.markdown(
+    with cd3:
+        st.markdown(
 """<div class="dashboard-card">
 <div class="card-title">🎬 影视 IP 模块</div>
 <div class="item-title">豆瓣 影视榜</div>
+<div class="item-row"><span class="tag-blue">属性</span> 评分、评价人数、内容简介</div>
 <div class="item-row"><span class="tag-blue">参数</span> 国产 / 欧美 / 日剧 / 韩剧</div>
 <div class="item-row"><span class="tag-red">高危</span> 极易触发WAF，强限20条内</div>
-<div class="item-title" style="margin-top: 15px;">IMDb 趋势榜</div>
-<div class="item-row"><span class="tag-blue">参数</span> 指定年份、月份</div>
-<div class="item-row"><span class="tag-green">支持</span> 历史流行度回溯</div>
+
+<div class="item-title" style="margin-top: 20px;">IMDb 趋势榜</div>
+<div class="item-row"><span class="tag-blue">属性</span> 全球流行度、评分、制作年份</div>
+<div class="item-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>
+<div class="item-row"><span class="tag-red">限制</span> 受国际网络接口限流影响</div>
 </div>""", unsafe_allow_html=True)
+
+    st.write("")
+
+    # --- 模块 C: 快捷分析模板 ---
+    st.caption("✨ **快捷分析模板 (点击直接运行)**")
+    cb1, cb2, cb3, cb4 = st.columns(4)
+    cb1.button("📊 分析 4月 手游大盘", on_click=set_prompt, args=("分析 4月 手游大盘情况",), use_container_width=True)
+    cb2.button("🎬 提取 豆瓣欧美剧 前 10名", on_click=set_prompt, args=("提取 豆瓣欧美剧前 10 名",), use_container_width=True)
+    cb3.button("🎮 分析 PC与直播 跨端大盘", on_click=set_prompt, args=("分析 Steam 与 直播榜单的大盘联动",), use_container_width=True)
+    cb4.button("🌐 生成 泛娱乐全行业 简报", on_click=set_prompt, args=("生成本月泛娱乐全行业综合分析简报",), use_container_width=True)
 
 st.markdown("---")
 
-# ================= 4. 快捷模板 (仅首次展现) =================
-if is_first_load:
-    st.caption("✨ **快捷分析模板 (点击直接运行)**")
-    cb1, cb2, cb3, cb4 = st.columns(4)
-    cb1.button("📊 提取 玩匠开测榜 前 20名", on_click=set_prompt, args=("提取 玩匠 4月前 20名",), use_container_width=True)
-    cb2.button("🎬 提取 豆瓣欧美剧 前 10名", on_click=set_prompt, args=("提取 豆瓣欧美剧前 10 名",), use_container_width=True)
-    cb3.button("🎮 分析 PC与直播 跨端大盘", on_click=set_prompt, args=("分析 Steam 与 国内外直播榜单的大盘情况",), use_container_width=True)
-    cb4.button("🌐 生成 泛娱乐全行业 简报", on_click=set_prompt, args=("生成本月泛娱乐全行业综合分析简报",), use_container_width=True)
-    st.markdown("---")
-
-# ================= 5. 执行内核与路由 =================
+# ================= 4. 核心路由引擎 (深度解耦直播逻辑) =================
 def run_spider(script, params):
     task_id = str(uuid.uuid4())[:8]
     out = f"res_{task_id}.csv"
@@ -134,13 +174,14 @@ def run_spider(script, params):
         line = p.stdout.readline()
         if not line and p.poll() is not None: break
         if line:
-            msg.caption(f"⚙️ 运行日志 [{script}]: {line.strip()[:60]}...")
+            msg.caption(f"⚙️ 数据流 [{script}]: {line.strip()[:60]}...")
             prog = re.search(r"\[(\d+)/(\d+)\]", line)
             if prog: bar.progress(min(int(prog.group(1))/int(prog.group(2)), 1.0))
     return p.wait(), out
 
 def parse_intent(prompt):
     p = prompt.lower()
+    
     num = re.search(r'(\d+)名|前\s*(\d+)|(\d+)条', prompt)
     limit = num.group(1) or num.group(2) or num.group(3) if num else None
     
@@ -150,90 +191,102 @@ def parse_intent(prompt):
     year = dt.group(1) if dt else str(now.year)
     month = (dt.group(2) if dt else (mo_only.group(1) if mo_only else str(now.month))).zfill(2)
 
-    is_macro = any(k in p for k in ["所有", "整体", "大盘", "全局", "全行业", "简报", "联动"])
-    
-    # 智能水位分配
-    l_hvy = limit if limit else ("20" if is_macro else "5")
-    l_std = limit if limit else ("100" if is_macro else "10")
-
     tasks = []
     
-    if any(k in p for k in ["手游", "tap", "玩匠", "测试", "大盘"]):
-        if is_macro or "tap" in p or "大盘" in p: tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": l_std}})
-        if is_macro or "玩匠" in p or "测" in p or "大盘" in p: tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": l_hvy, "YEAR": year, "MONTH": month}})
-        
-    if any(k in p for k in ["pc", "steam", "直播", "热度", "twitch"]):
-        if is_macro or "steam" in p: tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": l_std}})
-        if is_macro or "直播" in p or "热度" in p: 
-            tasks.append({"script": "domestic_live.py", "env": {"SCRAPE_LIMIT": l_std}})
-            tasks.append({"script": "intl_live.py", "env": {"SCRAPE_LIMIT": l_std}})
+    is_pan = any(k in p for k in ["泛娱乐", "全行业", "全局", "综合"])
+    l_hvy = limit if limit else "20" 
+    l_std = limit if limit else "100"
 
-    if any(k in p for k in ["影视", "豆瓣", "imdb", "剧", "全行业", "泛娱乐"]):
-        if is_macro or "imdb" in p: tasks.append({"script": "imdb.py", "env": {"SCRAPE_LIMIT": l_std, "YEAR": year, "MONTH": month}})
-        if is_macro or "豆瓣" in p or "剧" in p:
+    # --- 1. 手游模块触发器 ---
+    if is_pan or any(k in p for k in ["手游", "移动", "tap", "玩匠", "大盘"]):
+        if is_pan or any(k in p for k in ["tap", "手游", "大盘"]): 
+            tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": l_std}})
+        if is_pan or any(k in p for k in ["玩匠", "测", "手游", "大盘"]): 
+            tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": l_hvy, "YEAR": year, "MONTH": month}})
+            
+    # --- 2. PC 与 直播触发器 (深度解耦) ---
+    if is_pan or any(k in p for k in ["pc", "端游", "steam", "直播", "热度", "twitch", "播酱"]):
+        # PC Steam 判定
+        if is_pan or any(k in p for k in ["steam", "pc", "端游"]): 
+            tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": l_std}})
+        
+        # 直播平台精确分发逻辑
+        has_live = any(k in p for k in ["直播", "热度", "twitch", "播酱"])
+        if is_pan or has_live:
+            is_domestic = any(k in p for k in ["国内", "播酱", "大陆"])
+            is_intl = any(k in p for k in ["国外", "海外", "twitch", "国际"])
+            
+            # 只有明确提到国内，才只爬国内
+            if is_domestic and not is_intl:
+                tasks.append({"script": "domestic_live.py", "env": {"SCRAPE_LIMIT": l_std}})
+            # 只有明确提到国外，才只爬国外
+            elif is_intl and not is_domestic:
+                tasks.append({"script": "intl_live.py", "env": {"SCRAPE_LIMIT": l_std}})
+            # 如果只说了“直播”，或者泛娱乐大盘，那就全都爬
+            else:
+                tasks.append({"script": "domestic_live.py", "env": {"SCRAPE_LIMIT": l_std}})
+                tasks.append({"script": "intl_live.py", "env": {"SCRAPE_LIMIT": l_std}})
+
+    # --- 3. 影视模块触发器 ---
+    if is_pan or any(k in p for k in ["影视", "电影", "剧", "豆瓣", "imdb"]):
+        if is_pan or any(k in p for k in ["imdb", "影视"]): 
+            tasks.append({"script": "imdb.py", "env": {"SCRAPE_LIMIT": l_std, "YEAR": year, "MONTH": month}})
+        if is_pan or any(k in p for k in ["豆瓣", "剧", "电影", "影视"]):
             tags = []
             if "欧美" in p: tags.append("欧美剧")
             if "韩" in p: tags.append("韩剧")
             if "日" in p: tags.append("日剧")
             if "国产" in p: tags.append("国产剧")
-            if not tags: tags = ["欧美剧"] 
+            if not tags: tags = ["欧美剧"] # 默认参照系
             for t in tags:
                 tasks.append({"script": "douban.py", "env": {"SCRAPE_LIMIT": l_hvy, "DOUBAN_TAG": t}})
             
     return tasks
 
-# ================= 6. 会话流处理 =================
-# 获取输入指令（手敲 或 快捷按钮）
-user_input = st.chat_input("请输入指令 (例：生成 4月 泛娱乐全行业简报)...")
-active_prompt = st.session_state.trigger_prompt or user_input
-
-# 必须先处理新指令，再渲染历史
+# ================= 5. 会话执行流 =================
 if active_prompt:
-    st.session_state.trigger_prompt = None # 清空触发器防死循环
+    st.session_state.trigger_prompt = None 
     st.session_state.history.append({"role": "user", "content": active_prompt})
-    
-    # 强制重新刷新页面，触发 隐藏快捷按钮
     if len(st.session_state.history) == 1:
         st.rerun()
 
-# 渲染历史聊天流
 for chat in st.session_state.history:
     with st.chat_message(chat["role"]): st.markdown(chat["content"])
 
-# 渲染正在执行的任务流
 if active_prompt and len(st.session_state.history) > 0 and st.session_state.history[-1]["role"] == "user":
     tasks = parse_intent(active_prompt)
     if tasks:
         all_dfs = []
-        with st.status(f"🚀 系统已受理指令，正在并发调度 {len(tasks)} 个目标数据源...", expanded=True) as status:
+        with st.status(f"🚀 路由解析完毕，并发启动 {len(tasks)} 个采集通道...", expanded=True) as status:
             for task in tasks:
-                st.write(f"📡 穿透请求网络：`{task['script']}`")
+                st.write(f"📡 穿透目标节点：`{task['script']}`")
                 code, res_csv = run_spider(task["script"], task["env"])
                 if code == 0 and os.path.exists(res_csv):
                     df = pd.read_csv(res_csv)
-                    st.success(f"✅ {task['script']} 抓取清洗完毕 (共 {len(df)} 条)")
+                    st.success(f"✅ {task['script']} 提取完成 (共 {len(df)} 条)")
                     
-                    with st.expander(f"📦 查看 {task['script']} 数据表格"):
+                    with st.expander(f"📦 查看 {task['script']} 数据结果"):
                         st.dataframe(df, hide_index=True, use_container_width=True)
                         
                     all_dfs.append(f"### 数据源: {task['script']}\n" + df.to_markdown(index=False))
                     os.remove(res_csv)
                 else:
-                    st.error(f"❌ {task['script']} 抓取失败")
+                    st.error(f"❌ {task['script']} 执行失败")
 
             if all_dfs:
-                status.update(label=f"数据抓取完毕。正在请求 AI 生成商业简报...", state="running")
+                status.update(label=f"数据汇聚完成。正在依据【{analysis_mode}】生成商业简报...", state="running")
                 
                 ai_prompt = f"""
-                你是一位具备全局视野的商业分析师。请基于以下采集的实时数据，撰写结构化简报。
+                你是一位具备全局视野的商业分析师。当前用户的分析侧重点为：【{analysis_mode}】。
+                请基于以下底层采集的实时结构化数据，撰写商业简报。
                 
-                底层数据：
+                底层数据源：
                 {"\n\n".join(all_dfs)}
                 
-                排版要求（务必严格遵循）：
-                1. 🎯 **核心结论**：一句话概括本次抓取结论（加粗）。
-                2. 📊 **数据拆解**：无序列表列出 2-3 个支撑结论的数据事实，必须带具体数值/排名（数字加粗）。
-                3. 💡 **商业建议**：给出一个具体的业务建议。
+                排版要求（必须严格遵守）：
+                1. 🎯 **核心结论**：一句话概括最重要的数据趋势结论（加粗显示）。
+                2. 📊 **数据论证**：使用无序列表列出 2-3 个支撑事实，必须引用表中的具体数值或排名（数字加粗）。
+                3. 💡 **战略启示**：给出一个具体的业务落地建议。
                 """
                 with st.chat_message("assistant"):
                     try:
@@ -242,7 +295,7 @@ if active_prompt and len(st.session_state.history) > 0 and st.session_state.hist
                         st.markdown(ans)
                         st.session_state.history.append({"role": "assistant", "content": ans})
                     except:
-                        st.error("AI 分析超时，请查看上方的原始表格数据。")
+                        st.error("AI 简报服务响应超时，请直接参考上方的数据表格进行研判。")
                 status.update(label="全部执行完毕", state="complete")
     else:
-        st.warning("⚠️ 无法识别路由，请检查指令是否包含：玩匠、豆瓣、直播、手游 等关键字。")
+        st.warning("⚠️ 无法识别有效路由，请参考上方的指令构造公式（如：提取 国内直播 前20名）。")
