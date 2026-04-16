@@ -17,7 +17,7 @@ if sys.stdout.encoding != 'utf-8':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 20)) # 遵循云端防超时规范，默认大盘改为 20
+SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 20)) 
 OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "Wanjiang_Result.csv")
 YEAR = os.environ.get("YEAR", "2026")
 MONTH = os.environ.get("MONTH", "02")
@@ -110,32 +110,51 @@ def get_game_list_from_16p(driver):
     except: pass
     return results
 
-def get_single_metric(driver):
-    """修复版数值提取逻辑"""
+# === 恢复最强提取逻辑：遍历所有端，取最大值 ===
+def get_max_reserve_num(driver):
     def normalize_number(text):
-        text = text.replace("人", "").replace(",", "").strip()
+        if not text: return 0
+        text = text.replace(" ", "").replace(",", "").replace("人", "").strip()
         try:
-            if "万" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 10000)
-            else: return int(float(re.sub(r"[^\d\.]", "", text)))
+            if "万" in text: return int(float(re.search(r"[\d\.]+", text).group()) * 10000)
+            elif "亿" in text: return int(float(re.search(r"[\d\.]+", text).group()) * 100000000)
+            else: return int(re.sub(r"[^\d]", "", text) or 0)
         except: return 0
 
-    def grab_data():
+    def scrape_current_stats():
+        max_val = 0
         try:
-            for box in driver.find_elements(By.CSS_SELECTOR, "div.single-info"):
-                key = box.find_element(By.CSS_SELECTOR, ".caption-m12-w12").text.strip()
-                val = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
-                if key in ["预约", "关注"]: return normalize_number(val)
+            boxes = driver.find_elements(By.CSS_SELECTOR, ".single-info__content")
+            for box in boxes:
+                txt = box.text.strip()
+                if "预约" in txt or "关注" in txt:
+                    try:
+                        val_str = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
+                        val = normalize_number(val_str)
+                        if val > max_val: max_val = val
+                    except: continue
         except: pass
-        return 0
+        return max_val
 
-    try:
-        btns = WebDriverWait(driver, 4).until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.platform-picker-switch__item")))
-        driver.execute_script("arguments[0].click();", btns[0])
-        time.sleep(1)
-    except:
-        try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.single-info")))
-        except: pass
-    return grab_data()
+    try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content")))
+    except: pass
+
+    global_max = 0
+    try: btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+    except: btns = []
+
+    if btns:
+        for btn in btns:
+            try:
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(0.5)
+                current_val = scrape_current_stats()
+                if current_val > global_max: global_max = current_val
+            except: pass
+    else:
+        global_max = scrape_current_stats()
+        
+    return global_max
 
 def get_taptap_details(driver, game_list):
     final_data = []
@@ -163,7 +182,8 @@ def get_taptap_details(driver, game_list):
                 row["简介"] = intro[:100] + "..." if len(intro) > 100 else intro
             except: pass
 
-            num = get_single_metric(driver)
+            # === 调用新提取函数 ===
+            num = get_max_reserve_num(driver)
             if num > 0: row["预约/关注量"] = num
 
             final_data.append(row)
@@ -173,7 +193,8 @@ def get_taptap_details(driver, game_list):
     return final_data
 
 def main():
-    print(f"Wanjiang Kernel Running: Target Top {SCRAPE_LIMIT} for {MONTH_KEY}")
+    limit_str = "全月所有" if SCRAPE_LIMIT == 9999 else str(SCRAPE_LIMIT)
+    print(f"Wanjiang Kernel Running: Target {limit_str} for {MONTH_KEY}")
     driver = init_driver()
     try:
         game_list = get_game_list_from_16p(driver)
