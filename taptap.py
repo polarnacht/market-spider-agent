@@ -135,11 +135,38 @@ def get_additional_info(driver):
         return ""
 
 def get_publisher(driver):
+    """
+    多重 Fallback 机制提取厂商信息，大幅提高容错率
+    """
+    # === 策略 1：针对最新 HTML 结构 (包含“供应商”、“开发商”的单行文本) ===
     try:
-        return driver.find_element(By.XPATH,
-                                   "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").text.strip()
+        # 寻找包含特定字眼的任何元素
+        elements = driver.find_elements(By.XPATH, "//*[contains(text(), '供应商') or contains(text(), '发行商') or contains(text(), '开发商')]")
+        for el in elements:
+            text = el.text.strip()
+            # 过滤条件：确保是一句简短的话，而不是匹配到了整页的说明长文
+            if 2 < len(text) < 40: 
+                # 动态清洗前缀和标点
+                for prefix in ["供应商", "发行商", "开发商", "厂商", ":", "：", " "]:
+                    text = text.replace(prefix, "")
+                if text:
+                    return text.strip()
     except:
-        return ""
+        pass
+
+    # === 策略 2：兼容旧版 TapTap 的兄弟节点结构 ===
+    try:
+        return driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").text.strip()
+    except:
+        pass
+        
+    # === 策略 3：直接寻找常见的开发者 class 锚点 ===
+    try:
+        return driver.find_element(By.CSS_SELECTOR, "a.developer-name, span.developer-text").text.strip()
+    except:
+        pass
+
+    return "暂无信息"
 
 def get_intro_full(driver):
     try:
