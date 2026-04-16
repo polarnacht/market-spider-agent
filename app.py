@@ -34,7 +34,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 状态初始化与全局按键 =================
+# ================= 2. 状态初始化 =================
 if "history" not in st.session_state: st.session_state.history = []
 if "trigger_prompt" not in st.session_state: st.session_state.trigger_prompt = None
 
@@ -54,75 +54,69 @@ with col_t2:
 if len(st.session_state.history) == 0:
     st.write("")
     
-    # --- 模块 A: 指令规范 ---
+    # --- 模块 A: 指令规范 (去除所有缩进防Bug) ---
     st.markdown("### 💡 指令输入规范")
     cp1, cp2 = st.columns(2)
     with cp1:
-        st.markdown("""
-        <div class="prompt-box">
-            <b>🎯 单点深度抓取</b> <span style="color:#64748B;">(用于精确提取品类榜单)</span><br>
-            语法：<code>提取 [时间/分类] [数据源] 前[N]名</code><br>
-            示例：提取 豆瓣韩剧 前20名
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+"""<div class="prompt-box">
+<b>🎯 单点深度抓取</b> <span style="color:#64748B;">(用于精确提取品类榜单)</span><br>
+语法：<code>提取 [时间/分类] [数据源] 前[N]名</code><br>
+示例：提取 豆瓣韩剧 前20名
+</div>""", unsafe_allow_html=True)
     with cp2:
-        st.markdown("""
-        <div class="prompt-box">
-            <b>🌐 宏观大盘联动</b> <span style="color:#64748B;">(跨模块并发抓取，生成研报)</span><br>
-            语法：<code>分析 [时间] [行业大类]</code><br>
-            示例：生成 4月 泛娱乐全行业简报
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+"""<div class="prompt-box">
+<b>🌐 宏观大盘联动</b> <span style="color:#64748B;">(跨模块并发抓取，生成研报)</span><br>
+语法：<code>分析 [时间] [行业大类]</code><br>
+示例：生成 4月 泛娱乐全行业简报
+</div>""", unsafe_allow_html=True)
         
     st.write("")
 
-    # --- 模块 B: 数据源明细 (去除了冗余属性，仅保留参数与时效) ---
+    # --- 模块 B: 数据源明细 (彻底去除缩进，防止被渲染为代码块) ---
     st.markdown("### 🗂️ 挂载数据源明细")
     cd1, cd2, cd3 = st.columns(3)
     with cd1:
-        st.markdown("""
-        <div class="dashboard-card">
-            <div class="card-title">📱 手游模块</div>
-            <div class="item-title">TapTap 预约榜</div>
-            <div class="item-row"><span class="tag-red">限制</span> 仅实时快照，无历史回溯</div>
-            
-            <div class="item-title" style="margin-top: 15px;">玩匠(16P) 开测榜</div>
-            <div class="item-row"><span class="tag-blue">参数</span> 指定年份、月份</div>
-            <div class="item-row"><span class="tag-green">支持</span> 历史大盘数据回溯</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+"""<div class="dashboard-card">
+<div class="card-title">📱 手游模块</div>
+<div class="item-title">TapTap 预约榜</div>
+<div class="item-row"><span class="tag-red">限制</span> 仅实时快照，无历史回溯</div>
+<div class="item-title" style="margin-top: 15px;">玩匠(16P) 开测榜</div>
+<div class="item-row"><span class="tag-blue">参数</span> 指定年份、月份</div>
+<div class="item-row"><span class="tag-green">支持</span> 历史大盘数据回溯</div>
+</div>""", unsafe_allow_html=True)
+
     with cd2:
-        st.markdown("""
-        <div class="dashboard-card">
-            <div class="card-title">💻 PC & 直播模块</div>
-            <div class="item-title">Steam 愿望榜</div>
-            <div class="item-row"><span class="tag-red">限制</span> 实时接口，无历史回溯</div>
-            
-            <div class="item-title" style="margin-top: 15px;">国内外直播活跃榜</div>
-            <div class="item-row"><span class="tag-blue">参数</span> 国内(播酱) / 国外(Twitch)</div>
-            <div class="item-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+"""<div class="dashboard-card">
+<div class="card-title">💻 PC & 直播模块</div>
+<div class="item-title">Steam 愿望榜</div>
+<div class="item-row"><span class="tag-red">限制</span> 实时接口，单次建议100条内</div>
+<div class="item-title" style="margin-top: 15px;">国内外直播活跃榜</div>
+<div class="item-row"><span class="tag-blue">参数</span> 国内(播酱) / 国外(Twitch)</div>
+<div class="item-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>
+</div>""", unsafe_allow_html=True)
+
     with cd3:
-        st.markdown("""
-        <div class="dashboard-card">
-            <div class="card-title">🎬 影视 IP 模块</div>
-            <div class="item-title">豆瓣 影视榜</div>
-            <div class="item-row"><span class="tag-blue">参数</span> 国产 / 欧美 / 日剧 / 韩剧</div>
-            <div class="item-row"><span class="tag-red">高危</span> 极易触发WAF，强限20条内</div>
-            
-            <div class="item-title" style="margin-top: 15px;">IMDb 趋势榜</div>
-            <div class="item-row"><span class="tag-blue">参数</span> 指定年份、月份</div>
-            <div class="item-row"><span class="tag-green">支持</span> 历史流行度回溯</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+"""<div class="dashboard-card">
+<div class="card-title">🎬 影视 IP 模块</div>
+<div class="item-title">豆瓣 影视榜</div>
+<div class="item-row"><span class="tag-blue">参数</span> 国产 / 欧美 / 日剧 / 韩剧</div>
+<div class="item-row"><span class="tag-red">高危</span> 极易触发WAF，强限20条内</div>
+<div class="item-title" style="margin-top: 15px;">IMDb 趋势榜</div>
+<div class="item-row"><span class="tag-blue">参数</span> 指定年份、月份</div>
+<div class="item-row"><span class="tag-green">支持</span> 历史流行度回溯</div>
+</div>""", unsafe_allow_html=True)
 
     st.write("")
 
     # --- 模块 C: 快捷分析模板 ---
     st.caption("✨ **快捷分析模板 (点击直接运行)**")
     cb1, cb2, cb3, cb4 = st.columns(4)
-    cb1.button("📊 提取 TapTap 预约榜 前 50名", on_click=set_prompt, args=("提取 TapTap预约榜 前50名",), use_container_width=True)
+    cb1.button("📊 提取 玩匠开测榜 前 20名", on_click=set_prompt, args=("提取 玩匠 4月前 20名",), use_container_width=True)
     cb2.button("🎬 提取 豆瓣欧美剧 前 10名", on_click=set_prompt, args=("提取 豆瓣欧美剧前 10 名",), use_container_width=True)
     cb3.button("🎮 分析 PC与直播 跨端大盘", on_click=set_prompt, args=("分析 Steam 与 国内外直播榜单的大盘情况",), use_container_width=True)
     cb4.button("🌐 生成 泛娱乐全行业 简报", on_click=set_prompt, args=("生成本月泛娱乐全行业综合分析简报",), use_container_width=True)
