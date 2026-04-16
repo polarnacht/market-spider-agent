@@ -226,4 +226,44 @@ if active_prompt:
         # 1. 仅将执行日志包裹在 status 中，跑完自动折叠
         with st.status(f"🚀 正在并发拉起 {len(tasks)} 个目标数据源...", expanded=True) as status:
             for task in tasks:
-                st.write(f"📡 执行抓取：
+                st.write(f"📡 执行抓取：`{task['script']}`")
+                code, res_csv = run_spider(task["script"], task["env"])
+                if code == 0 and os.path.exists(res_csv):
+                    df = pd.read_csv(res_csv)
+                    st.success(f"✅ {task['script']} 完成 (成功提取 {len(df)} 条)")
+                    fetched_results.append({"script": task['script'], "df": df})
+                    all_dfs.append(f"### 数据源: {task['script']}\n" + df.to_markdown(index=False))
+                    os.remove(res_csv)
+                else:
+                    st.error(f"❌ {task['script']} 运行异常")
+            status.update(label="✅ 数据采集完毕，准备生成研报", state="complete", expanded=False)
+
+        # 2. 将数据表渲染在 status 外部，且默认全部展开，绝不消失！
+        if fetched_results:
+            st.markdown("### 📦 抓取数据结果")
+            for res in fetched_results:
+                with st.expander(f"查看 {res['script']} 原始表格 (共 {len(res['df'])} 条)", expanded=True):
+                    st.dataframe(res['df'], hide_index=True, use_container_width=True)
+
+            # 3. 将 AI 简报渲染在外部
+            ai_prompt = f"""
+            你是一位专业的数据分析师。请基于以下底层采集的实时结构化数据，撰写业务简报。
+            
+            底层数据源：
+            {"\n\n".join(all_dfs)}
+            
+            排版要求：
+            1. 🎯 **核心结论**：一句话概括本次数据最明显的现象（加粗）。
+            2. 📊 **数据论证**：使用无序列表，引用表中的具体数值或排名来证明结论（数字必须加粗）。
+            3. 💡 **商业建议**：给出一个具体的落地建议。
+            """
+            with st.chat_message("assistant"):
+                try:
+                    resp = CLIENT.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": ai_prompt}])
+                    ans = resp.choices[0].message.content
+                    st.markdown(ans)
+                    st.session_state.history.append({"role": "assistant", "content": ans})
+                except:
+                    st.error("AI 分析服务连接失败，请直接查阅上方的数据表。")
+    else:
+        st.warning("⚠️ 未能识别出需要抓取的分类，请参考上方的指令构造指南。")
