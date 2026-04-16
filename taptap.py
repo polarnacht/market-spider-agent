@@ -65,61 +65,69 @@ def get_game_list(driver):
         except: continue
     return game_list
 
+# === 完全复刻你原版逻辑的最高值提取 ===
 def get_max_reserve_num(driver):
     def normalize_number(text):
-        if not text: return 0
-        text_clean = re.sub(r'[^\d\.]', '', str(text))
-        if not text_clean: return 0
+        text = text.replace("人", "").replace(",", "").strip()
         try:
-            num_float = float(text_clean)
-            if "万" in str(text): return int(num_float * 10000)
-            elif "亿" in str(text): return int(num_float * 100000000)
-            else: return int(num_float)
-        except: return 0
+            if "万" in text:
+                num = float(re.sub(r"[^\d\.]", "", text)) * 10000
+            elif "亿" in text:
+                num = float(re.sub(r"[^\d\.]", "", text)) * 100000000
+            else:
+                num = float(re.sub(r"[^\d\.]", "", text))
+            return int(num)
+        except:
+            return 0
 
-    def extract_current_view():
-        max_current = 0
+    def extract_from_current_view():
+        current_max = 0
+        # 主方式
         try:
-            boxes = driver.find_elements(By.CSS_SELECTOR, "div.single-info")
-            for box in boxes:
+            info_boxes = driver.find_elements(By.CSS_SELECTOR, "div.single-info")
+            for box in info_boxes:
                 key = box.find_element(By.CSS_SELECTOR, ".caption-m12-w12").text.strip()
+                value = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
                 if key in ["预约", "关注"]:
-                    val_str = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
-                    max_current = max(max_current, normalize_number(val_str))
+                    current_max = max(current_max, normalize_number(value))
         except: pass
         
-        if max_current == 0:
+        # 备用方式
+        if current_max == 0:
             try:
-                boxes = driver.find_elements(By.CSS_SELECTOR, "div.swiper-slide")
-                for box in boxes:
+                alt_boxes = driver.find_elements(By.CSS_SELECTOR, "div.swiper-slide")
+                for box in alt_boxes:
                     spans = box.find_elements(By.TAG_NAME, "span")
                     if len(spans) >= 2:
-                        val_str = spans[0].text.strip()
+                        value = spans[0].text.strip()
                         key = spans[1].text.strip()
                         if key in ["预约", "关注"]:
-                            max_current = max(max_current, normalize_number(val_str))
+                            current_max = max(current_max, normalize_number(value))
             except: pass
-        return max_current
+        return current_max
 
-    global_max = 0
-    try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content")))
-    except: pass
-
+    max_val = 0
     try:
-        platform_buttons = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
-        if platform_buttons:
-            for btn in platform_buttons:
-                try:
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                    time.sleep(0.5)
-                    driver.execute_script("arguments[0].click();", btn)
-                    time.sleep(1)
-                    global_max = max(global_max, extract_current_view())
-                except: continue
-        else:
-            global_max = extract_current_view()
-    except: global_max = extract_current_view()
-    return global_max
+        # 获取平台按钮数量
+        platform_buttons = WebDriverWait(driver, 5).until(
+            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.platform-picker-switch__item"))
+        )
+        # 必须用 range 循环，每次重新定位，防止 StaleElementReferenceException
+        for i in range(len(platform_buttons)):
+            try:
+                buttons = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+                button = buttons[i]
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+                button.click()
+                time.sleep(1) # 严格遵守原版的 1 秒等待
+                max_val = max(max_val, extract_from_current_view())
+            except Exception as e:
+                continue
+    except:
+        # 如果没有按钮，单平台直接抓
+        max_val = extract_from_current_view()
+        
+    return max_val
 
 def get_additional_info(driver):
     try: return ", ".join([tag.text.strip() for tag in driver.find_elements(By.CSS_SELECTOR, "a.app-intro__tag-item")])
@@ -127,17 +135,19 @@ def get_additional_info(driver):
 
 def get_publisher(driver):
     try:
+        factory = driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").text.strip()
+        return factory
+    except:
+        pass
+        
+    try:
         for el in driver.find_elements(By.XPATH, "//*[contains(text(), '供应商') or contains(text(), '发行商') or contains(text(), '开发商')]"):
             text = el.text.strip()
             if 2 < len(text) < 40: 
                 for prefix in ["供应商", "发行商", "开发商", "厂商", ":", "：", " "]: text = text.replace(prefix, "")
                 if text: return text.strip()
     except: pass
-    try: return driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").text.strip()
-    except: pass
-    try: return driver.find_element(By.CSS_SELECTOR, "a.developer-name, span.developer-text").text.strip()
-    except: pass
-    return "暂无信息"
+    return ""
 
 def get_intro_full(driver):
     try:
@@ -147,14 +157,15 @@ def get_intro_full(driver):
         driver.execute_script("arguments[0].click();", summary)
         time.sleep(0.5)
         try:
-            summary_div = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14")))
+            summary_div = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14")))
             intro_text = summary_div.text.strip()
             if intro_text: return intro_text
             more_button = summary_div.find_element(By.CSS_SELECTOR, "div.text-modal__more.clickable span")
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
+            time.sleep(0.3)
             driver.execute_script("arguments[0].click();", more_button)
             time.sleep(0.5)
-            return WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-modal__text"))).get_attribute("innerText").strip()
+            return WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-modal__text"))).get_attribute("innerText").strip()
         except: return ""
     except: return ""
 
