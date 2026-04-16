@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 from openai import OpenAI
 
-# ================= 1. 核心配置与全局样式 =================
+# ================= 1. 核心配置与极简样式 =================
 API_KEY = st.secrets.get("api_key", "sk-cc6655649d204550bd5bcffd355ab4dd")
 CLIENT = OpenAI(api_key=API_KEY, base_url="https://api.deepseek.com")
 
@@ -23,7 +23,7 @@ st.markdown("""
     .ds-row { font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: flex; align-items: center; }
     .tag-blue { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
     .tag-red { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
-    .guide-box { background: white; border: 1px solid #E2E8F0; padding: 15px 20px; border-radius: 8px; }
+    .guide-box { background: white; border: 1px solid #E2E8F0; padding: 15px 20px; border-radius: 8px; margin-bottom: 10px;}
     code { color: #0369A1 !important; background: #F0F9FF !important; }
     </style>
     """, unsafe_allow_html=True)
@@ -45,76 +45,70 @@ with col_t3:
         st.session_state.trigger_prompt = None
         st.rerun()
 
-# ================= 3. 永久常驻面板 (绝不折叠) =================
+# ================= 3. 永久常驻面板 (绝对禁止隐藏) =================
 
-# --- 模块 A: 指令规范 (一示例且可点击) ---
+# --- 模块 A: 指令规范 (一示例且可点击，采用有颜色的方框) ---
 st.markdown("### 💡 核心指令构造指南")
 g1, g2 = st.columns(2)
 with g1:
-    st.markdown("""
-    <div class="guide-box">
-        <b>🎯 单点深度提取</b> <span style="font-size:0.85rem; color:#64748B;">(用于精准获取某个榜单)</span><br>
-        语法：<code>提取 [时间/分类] [数据源] [数量]</code>
-    </div>
-    """, unsafe_allow_html=True)
-    st.button("👉 点击填入示例：提取 国内直播 10", on_click=trigger_shortcut, args=("提取 国内直播 10",), use_container_width=True)
+    # 彻底去除 HTML 缩进防乱码
+    st.markdown(
+'<div class="guide-box">'
+'<b>🎯 单点深度提取</b> <span style="font-size:0.85rem; color:#64748B;">(用于精准获取某个榜单)</span><br>'
+'语法：<code>提取 [时间/分类] [数据源] [数量]</code>'
+'</div>', unsafe_allow_html=True)
+    # 使用 type="primary" 让按钮变成醒目的彩色方框
+    st.button("👉 点击执行示例：提取 国内直播 10", on_click=trigger_shortcut, args=("提取 国内直播 10",), type="primary", use_container_width=True)
 
 with g2:
-    st.markdown("""
-    <div class="guide-box">
-        <b>🌐 宏观大盘联动</b> <span style="font-size:0.85rem; color:#64748B;">(并发拉起多数据源，生成研报)</span><br>
-        语法：<code>分析 [时间] [行业大类]</code>
-    </div>
-    """, unsafe_allow_html=True)
-    st.button("👉 点击填入示例：分析 4月 手游大盘", on_click=trigger_shortcut, args=("分析 4月 手游大盘",), use_container_width=True)
+    st.markdown(
+'<div class="guide-box">'
+'<b>🌐 宏观大盘联动</b> <span style="font-size:0.85rem; color:#64748B;">(并发拉起多数据源，生成研报)</span><br>'
+'语法：<code>分析 [时间] [行业大类]</code>'
+'</div>', unsafe_allow_html=True)
+    st.button("👉 点击执行示例：分析 4月 手游大盘", on_click=trigger_shortcut, args=("分析 4月 手游大盘",), type="primary", use_container_width=True)
 
 st.markdown("---")
 
-# --- 模块 B: 数据源明细 ---
+# --- 模块 B: 数据源明细 (彻底去除缩进，根治被吞 Bug) ---
 st.markdown("### 🗂️ 数据源能力明细")
 d1, d2, d3 = st.columns(3)
 
 with d1:
-    st.markdown("""
-    <div class="ds-card">
-        <div class="ds-header">📱 手游模块</div>
-        <div class="ds-title">TapTap 预约榜</div>
-        <div class="ds-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
-        <div class="ds-row"><span class="tag-red">限制</span> 仅实时快照，无历史回溯</div>
-        
-        <div class="ds-title" style="margin-top: 18px;">玩匠(16P) 开测榜</div>
-        <div class="ds-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>
-        <div class="ds-row"><span class="tag-red">限制</span> 详情页穿透慢，大盘限50条</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+'<div class="ds-card">'
+'<div class="ds-header">📱 手游模块</div>'
+'<div class="ds-title">TapTap 预约榜</div>'
+'<div class="ds-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 仅实时快照，无历史回溯</div>'
+'<div class="ds-title" style="margin-top: 18px;">玩匠(16P) 开测榜</div>'
+'<div class="ds-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 详情页穿透慢，大盘限50条</div>'
+'</div>', unsafe_allow_html=True)
 
 with d2:
-    st.markdown("""
-    <div class="ds-card">
-        <div class="ds-header">💻 PC & 直播模块</div>
-        <div class="ds-title">Steam 愿望榜</div>
-        <div class="ds-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>
-        <div class="ds-row"><span class="tag-red">限制</span> 实时接口，单次建议100内</div>
-        
-        <div class="ds-title" style="margin-top: 18px;">国内外直播榜</div>
-        <div class="ds-row"><span class="tag-blue">参数</span> 国内(播酱) / 国外(Twitch)</div>
-        <div class="ds-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+'<div class="ds-card">'
+'<div class="ds-header">💻 PC & 直播模块</div>'
+'<div class="ds-title">Steam 愿望榜</div>'
+'<div class="ds-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 实时接口，单次建议100内</div>'
+'<div class="ds-title" style="margin-top: 18px;">国内外直播榜</div>'
+'<div class="ds-row"><span class="tag-blue">参数</span> 国内(播酱) / 国外(Twitch)</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>'
+'</div>', unsafe_allow_html=True)
 
 with d3:
-    st.markdown("""
-    <div class="ds-card">
-        <div class="ds-header">🎬 影视 IP 模块</div>
-        <div class="ds-title">豆瓣 影视榜</div>
-        <div class="ds-row"><span class="tag-blue">参数</span> 国产 / 欧美 / 日剧 / 韩剧</div>
-        <div class="ds-row"><span class="tag-red">限制</span> 极易触发WAF，强限20条内</div>
-        
-        <div class="ds-title" style="margin-top: 18px;">IMDb 趋势榜</div>
-        <div class="ds-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>
-        <div class="ds-row"><span class="tag-red">限制</span> 受国际网络接口限流影响</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+'<div class="ds-card">'
+'<div class="ds-header">🎬 影视 IP 模块</div>'
+'<div class="ds-title">豆瓣 影视榜</div>'
+'<div class="ds-row"><span class="tag-blue">参数</span> 国产 / 欧美 / 日剧 / 韩剧</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 极易触发WAF，强限20条内</div>'
+'<div class="ds-title" style="margin-top: 18px;">IMDb 趋势榜</div>'
+'<div class="ds-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 受国际网络接口限流影响</div>'
+'</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
@@ -158,6 +152,7 @@ def parse_intent(prompt):
 
     is_macro = any(k in p for k in ["所有", "整体", "大盘", "全局", "全行业", "简报", "联动"])
     
+    # 水位分配
     l_hvy = limit if limit else ("20" if is_macro else "5")
     l_std = limit if limit else ("100" if is_macro else "10")
 
