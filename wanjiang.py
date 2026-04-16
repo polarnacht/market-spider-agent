@@ -68,7 +68,7 @@ def get_publisher(driver):
     return "暂无信息"
 
 def get_game_list_from_16p(driver):
-    print(f"[{MONTH_KEY} 开测榜] 正在从玩匠获取名单...")
+    print(f"[{MONTH_KEY} 开测榜] 正在获取名单...")
     driver.get("https://www.16p.com/newgame")
     wait = WebDriverWait(driver, 15)
     while True:
@@ -110,51 +110,66 @@ def get_game_list_from_16p(driver):
     except: pass
     return results
 
-# === 恢复最强提取逻辑：遍历所有端，取最大值 ===
 def get_max_reserve_num(driver):
     def normalize_number(text):
-        if not text: return 0
-        text = text.replace(" ", "").replace(",", "").replace("人", "").strip()
+        text = str(text).replace("人", "").replace(",", "").strip()
         try:
-            if "万" in text: return int(float(re.search(r"[\d\.]+", text).group()) * 10000)
-            elif "亿" in text: return int(float(re.search(r"[\d\.]+", text).group()) * 100000000)
-            else: return int(re.sub(r"[^\d]", "", text) or 0)
+            if "万" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 10000)
+            elif "亿" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 100000000)
+            else: return int(float(re.sub(r"[^\d\.]", "", text) or 0))
         except: return 0
 
-    def scrape_current_stats():
-        max_val = 0
+    def extract_current_view():
+        max_current = 0
         try:
-            boxes = driver.find_elements(By.CSS_SELECTOR, ".single-info__content")
-            for box in boxes:
-                txt = box.text.strip()
-                if "预约" in txt or "关注" in txt:
-                    try:
-                        val_str = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
-                        val = normalize_number(val_str)
-                        if val > max_val: max_val = val
-                    except: continue
+            for box in driver.find_elements(By.CSS_SELECTOR, "div.single-info"):
+                key = box.find_element(By.CSS_SELECTOR, ".caption-m12-w12").text.strip()
+                val = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
+                if key in ["预约", "关注"]: max_current = max(max_current, normalize_number(val))
         except: pass
-        return max_val
-
-    try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content")))
-    except: pass
+        if max_current == 0:
+            try:
+                for box in driver.find_elements(By.CSS_SELECTOR, "div.swiper-slide"):
+                    spans = box.find_elements(By.TAG_NAME, "span")
+                    if len(spans) >= 2:
+                        val = spans[0].text.strip()
+                        key = spans[1].text.strip()
+                        if key in ["预约", "关注"]: max_current = max(max_current, normalize_number(val))
+            except: pass
+        return max_current
 
     global_max = 0
-    try: btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
-    except: btns = []
-
-    if btns:
-        for btn in btns:
+    try:
+        platform_buttons = WebDriverWait(driver, 5).until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.platform-picker-switch__item")))
+        for btn in platform_buttons:
             try:
-                driver.execute_script("arguments[0].click();", btn)
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
                 time.sleep(0.5)
-                current_val = scrape_current_stats()
-                if current_val > global_max: global_max = current_val
-            except: pass
-    else:
-        global_max = scrape_current_stats()
-        
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(1)
+                global_max = max(global_max, extract_current_view())
+            except: continue
+    except: global_max = extract_current_view()
     return global_max
+
+def get_intro_full(driver):
+    try:
+        summary = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.app-intro__summary")))
+        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", summary)
+        time.sleep(0.3)
+        driver.execute_script("arguments[0].click();", summary)
+        time.sleep(0.5)
+        try:
+            summary_div = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14")))
+            intro_text = summary_div.text.strip()
+            if intro_text: return intro_text
+            more_button = summary_div.find_element(By.CSS_SELECTOR, "div.text-modal__more.clickable span")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
+            driver.execute_script("arguments[0].click();", more_button)
+            time.sleep(0.5)
+            return WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-modal__text"))).get_attribute("innerText").strip()
+        except: return ""
+    except: return ""
 
 def get_taptap_details(driver, game_list):
     final_data = []
@@ -175,14 +190,9 @@ def get_taptap_details(driver, game_list):
             row["厂商"] = get_publisher(driver)
             try: row["标签"] = ", ".join([t.text.strip() for t in driver.find_elements(By.CSS_SELECTOR, "a.app-intro__tag-item")])
             except: pass
-            try:
-                try: driver.find_element(By.CSS_SELECTOR, ".app-intro__summary").click()
-                except: pass
-                intro = driver.find_element(By.CSS_SELECTOR, ".text-modal").text.strip()
-                row["简介"] = intro[:100] + "..." if len(intro) > 100 else intro
-            except: pass
+            
+            row["简介"] = get_intro_full(driver)[:100] + "..." if len(get_intro_full(driver)) > 100 else get_intro_full(driver)
 
-            # === 调用新提取函数 ===
             num = get_max_reserve_num(driver)
             if num > 0: row["预约/关注量"] = num
 
@@ -205,7 +215,7 @@ def main():
             df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
             print(f"File Saved: {OUTPUT_FILE}")
         else:
-            print("未能抓取到任何有效数据，已触发安全退出。")
+            print("未能抓取到任何有效数据。")
     finally:
         driver.quit()
 
