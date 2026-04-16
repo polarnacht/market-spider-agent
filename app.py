@@ -18,9 +18,9 @@ st.markdown("""
     <style>
     .main { background-color: #F8FAFC; }
     /* 卡片与排版 */
-    .dashboard-card { background: white; border: 1px solid #E2E8F0; padding: 20px; border-radius: 8px; height: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
-    .card-title { font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 15px; border-bottom: 2px solid #3B82F6; padding-bottom: 6px; display: inline-block;}
-    .item-title { font-weight: 600; color: #334155; margin-top: 10px; margin-bottom: 4px; font-size: 0.95rem; }
+    .dashboard-card { background: white; border: 1px solid #E2E8F0; padding: 15px 20px; border-radius: 8px; height: 100%; box-shadow: 0 1px 2px rgba(0,0,0,0.02); }
+    .card-title { font-size: 1.05rem; font-weight: 700; color: #0F172A; margin-bottom: 12px; border-bottom: 2px solid #3B82F6; padding-bottom: 6px; display: inline-block;}
+    .item-title { font-weight: 600; color: #334155; margin-top: 5px; margin-bottom: 4px; font-size: 0.95rem; }
     .item-row { font-size: 0.85rem; color: #475569; margin-bottom: 3px; display: flex; align-items: center; }
     /* 精简标签 */
     .tag-blue { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
@@ -29,56 +29,54 @@ st.markdown("""
     /* 快捷按钮 */
     .stButton>button { border-radius: 6px; }
     /* 提示词框 */
-    .prompt-box { background: white; border: 1px solid #E2E8F0; padding: 15px; border-radius: 8px; font-size: 0.9rem;}
+    .prompt-box { background: white; border: 1px solid #E2E8F0; padding: 12px 15px; border-radius: 8px; font-size: 0.9rem;}
     code { color: #0369A1 !important; background: #F0F9FF !important; }
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 状态初始化 =================
+# ================= 2. 状态初始化与顶栏 =================
 if "history" not in st.session_state: st.session_state.history = []
 if "trigger_prompt" not in st.session_state: st.session_state.trigger_prompt = None
 
 def set_prompt(val): st.session_state.trigger_prompt = val
 
-# 顶部 Title 与 重置按钮
 col_t1, col_t2 = st.columns([5, 1])
 with col_t1:
     st.title("🌐 泛娱乐市场情报 Agent")
 with col_t2:
-    st.write("") # 占位对齐
+    st.write("") 
     if st.button("🧹 清空当前会话", use_container_width=True):
         st.session_state.history = []
+        st.session_state.trigger_prompt = None
         st.rerun()
 
-# ================= 3. 欢迎面板 (有对话后自动隐藏) =================
-if len(st.session_state.history) == 0:
-    st.write("")
-    
-    # --- 模块 A: 指令规范 (去除所有缩进防Bug) ---
-    st.markdown("### 💡 指令输入规范")
-    cp1, cp2 = st.columns(2)
-    with cp1:
-        st.markdown(
+# 判断是否是第一次加载
+is_first_load = len(st.session_state.history) == 0
+
+# ================= 3. 永久平铺的说明书面板 (取消折叠) =================
+st.markdown("### 📖 指令规范与数据源明细")
+
+cp1, cp2 = st.columns(2)
+with cp1:
+    st.markdown(
 """<div class="prompt-box">
 <b>🎯 单点深度抓取</b> <span style="color:#64748B;">(用于精确提取品类榜单)</span><br>
 语法：<code>提取 [时间/分类] [数据源] 前[N]名</code><br>
 示例：提取 豆瓣韩剧 前20名
 </div>""", unsafe_allow_html=True)
-    with cp2:
-        st.markdown(
+with cp2:
+    st.markdown(
 """<div class="prompt-box">
 <b>🌐 宏观大盘联动</b> <span style="color:#64748B;">(跨模块并发抓取，生成研报)</span><br>
 语法：<code>分析 [时间] [行业大类]</code><br>
 示例：生成 4月 泛娱乐全行业简报
 </div>""", unsafe_allow_html=True)
-        
-    st.write("")
+    
+st.write("")
 
-    # --- 模块 B: 数据源明细 (彻底去除缩进，防止被渲染为代码块) ---
-    st.markdown("### 🗂️ 挂载数据源明细")
-    cd1, cd2, cd3 = st.columns(3)
-    with cd1:
-        st.markdown(
+cd1, cd2, cd3 = st.columns(3)
+with cd1:
+    st.markdown(
 """<div class="dashboard-card">
 <div class="card-title">📱 手游模块</div>
 <div class="item-title">TapTap 预约榜</div>
@@ -88,8 +86,8 @@ if len(st.session_state.history) == 0:
 <div class="item-row"><span class="tag-green">支持</span> 历史大盘数据回溯</div>
 </div>""", unsafe_allow_html=True)
 
-    with cd2:
-        st.markdown(
+with cd2:
+    st.markdown(
 """<div class="dashboard-card">
 <div class="card-title">💻 PC & 直播模块</div>
 <div class="item-title">Steam 愿望榜</div>
@@ -99,8 +97,8 @@ if len(st.session_state.history) == 0:
 <div class="item-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>
 </div>""", unsafe_allow_html=True)
 
-    with cd3:
-        st.markdown(
+with cd3:
+    st.markdown(
 """<div class="dashboard-card">
 <div class="card-title">🎬 影视 IP 模块</div>
 <div class="item-title">豆瓣 影视榜</div>
@@ -111,19 +109,19 @@ if len(st.session_state.history) == 0:
 <div class="item-row"><span class="tag-green">支持</span> 历史流行度回溯</div>
 </div>""", unsafe_allow_html=True)
 
-    st.write("")
+st.markdown("---")
 
-    # --- 模块 C: 快捷分析模板 ---
+# ================= 4. 快捷模板 (仅首次展现) =================
+if is_first_load:
     st.caption("✨ **快捷分析模板 (点击直接运行)**")
     cb1, cb2, cb3, cb4 = st.columns(4)
     cb1.button("📊 提取 玩匠开测榜 前 20名", on_click=set_prompt, args=("提取 玩匠 4月前 20名",), use_container_width=True)
     cb2.button("🎬 提取 豆瓣欧美剧 前 10名", on_click=set_prompt, args=("提取 豆瓣欧美剧前 10 名",), use_container_width=True)
     cb3.button("🎮 分析 PC与直播 跨端大盘", on_click=set_prompt, args=("分析 Steam 与 国内外直播榜单的大盘情况",), use_container_width=True)
     cb4.button("🌐 生成 泛娱乐全行业 简报", on_click=set_prompt, args=("生成本月泛娱乐全行业综合分析简报",), use_container_width=True)
+    st.markdown("---")
 
-st.markdown("---")
-
-# ================= 4. 执行内核与路由 =================
+# ================= 5. 执行内核与路由 =================
 def run_spider(script, params):
     task_id = str(uuid.uuid4())[:8]
     out = f"res_{task_id}.csv"
@@ -184,22 +182,26 @@ def parse_intent(prompt):
             
     return tasks
 
-# ================= 5. 会话与流式输出 =================
-for chat in st.session_state.history:
-    with st.chat_message(chat["role"]): st.markdown(chat["content"])
-
+# ================= 6. 会话流处理 =================
+# 获取输入指令（手敲 或 快捷按钮）
 user_input = st.chat_input("请输入指令 (例：生成 4月 泛娱乐全行业简报)...")
 active_prompt = st.session_state.trigger_prompt or user_input
 
+# 必须先处理新指令，再渲染历史
 if active_prompt:
-    st.session_state.trigger_prompt = None 
+    st.session_state.trigger_prompt = None # 清空触发器防死循环
     st.session_state.history.append({"role": "user", "content": active_prompt})
     
-    # 点击后刷新，隐藏欢迎面板
-    if len(st.session_state.history) == 1: st.rerun()
-    
-    with st.chat_message("user"): st.markdown(active_prompt)
+    # 强制重新刷新页面，触发 隐藏快捷按钮
+    if len(st.session_state.history) == 1:
+        st.rerun()
 
+# 渲染历史聊天流
+for chat in st.session_state.history:
+    with st.chat_message(chat["role"]): st.markdown(chat["content"])
+
+# 渲染正在执行的任务流
+if active_prompt and len(st.session_state.history) > 0 and st.session_state.history[-1]["role"] == "user":
     tasks = parse_intent(active_prompt)
     if tasks:
         all_dfs = []
@@ -222,7 +224,6 @@ if active_prompt:
             if all_dfs:
                 status.update(label=f"数据抓取完毕。正在请求 AI 生成商业简报...", state="running")
                 
-                # 固化的结构化报告要求
                 ai_prompt = f"""
                 你是一位具备全局视野的商业分析师。请基于以下采集的实时数据，撰写结构化简报。
                 
