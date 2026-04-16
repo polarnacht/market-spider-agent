@@ -35,11 +35,8 @@ def init_driver():
 
     if chromium_path: options.binary_location = chromium_path
     service = Service(executable_path=chromedriver_path) if chromedriver_path else Service()
-    
     driver = webdriver.Chrome(service=service, options=options)
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"
-    })
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"})
     return driver
 
 def scroll_to_bottom_then_top(driver, wait_time=1):
@@ -68,56 +65,60 @@ def get_game_list(driver):
         except: continue
     return game_list
 
-# === 融合了原版最强“轮播图备用提取”的取最大值函数 ===
 def get_max_reserve_num(driver):
     def normalize_number(text):
-        text = str(text).replace("人", "").replace(",", "").strip()
+        if not text: return 0
+        text_clean = re.sub(r'[^\d\.]', '', str(text))
+        if not text_clean: return 0
         try:
-            if "万" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 10000)
-            elif "亿" in text: return int(float(re.sub(r"[^\d\.]", "", text)) * 100000000)
-            else: return int(float(re.sub(r"[^\d\.]", "", text) or 0))
+            num_float = float(text_clean)
+            if "万" in str(text): return int(num_float * 10000)
+            elif "亿" in str(text): return int(num_float * 100000000)
+            else: return int(num_float)
         except: return 0
 
     def extract_current_view():
         max_current = 0
-        # 主方式
         try:
-            for box in driver.find_elements(By.CSS_SELECTOR, "div.single-info"):
+            boxes = driver.find_elements(By.CSS_SELECTOR, "div.single-info")
+            for box in boxes:
                 key = box.find_element(By.CSS_SELECTOR, ".caption-m12-w12").text.strip()
-                val = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
                 if key in ["预约", "关注"]:
-                    max_current = max(max_current, normalize_number(val))
+                    val_str = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
+                    max_current = max(max_current, normalize_number(val_str))
         except: pass
         
-        # 备用方式 (完全复刻你的逻辑)
         if max_current == 0:
             try:
-                for box in driver.find_elements(By.CSS_SELECTOR, "div.swiper-slide"):
+                boxes = driver.find_elements(By.CSS_SELECTOR, "div.swiper-slide")
+                for box in boxes:
                     spans = box.find_elements(By.TAG_NAME, "span")
                     if len(spans) >= 2:
-                        val = spans[0].text.strip()
+                        val_str = spans[0].text.strip()
                         key = spans[1].text.strip()
                         if key in ["预约", "关注"]:
-                            max_current = max(max_current, normalize_number(val))
+                            max_current = max(max_current, normalize_number(val_str))
             except: pass
         return max_current
 
     global_max = 0
+    try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content")))
+    except: pass
+
     try:
-        platform_buttons = WebDriverWait(driver, 5).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "div.platform-picker-switch__item"))
-        )
-        for btn in platform_buttons:
-            try:
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                time.sleep(0.5)
-                driver.execute_script("arguments[0].click();", btn)
-                time.sleep(1)
-                global_max = max(global_max, extract_current_view())
-            except: continue
-    except:
-        global_max = extract_current_view()
-        
+        platform_buttons = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+        if platform_buttons:
+            for btn in platform_buttons:
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                    time.sleep(0.5)
+                    driver.execute_script("arguments[0].click();", btn)
+                    time.sleep(1)
+                    global_max = max(global_max, extract_current_view())
+                except: continue
+        else:
+            global_max = extract_current_view()
+    except: global_max = extract_current_view()
     return global_max
 
 def get_additional_info(driver):
@@ -138,7 +139,6 @@ def get_publisher(driver):
     except: pass
     return "暂无信息"
 
-# === 完美复刻你的“展开更多”简介抓取方案 ===
 def get_intro_full(driver):
     try:
         summary = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.app-intro__summary")))
@@ -150,14 +150,11 @@ def get_intro_full(driver):
             summary_div = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14")))
             intro_text = summary_div.text.strip()
             if intro_text: return intro_text
-            
             more_button = summary_div.find_element(By.CSS_SELECTOR, "div.text-modal__more.clickable span")
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
             driver.execute_script("arguments[0].click();", more_button)
             time.sleep(0.5)
-            
-            full_intro = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-modal__text"))).get_attribute("innerText").strip()
-            return full_intro
+            return WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-modal__text"))).get_attribute("innerText").strip()
         except: return ""
     except: return ""
 
@@ -175,7 +172,6 @@ def main():
         for i, row in enumerate(games):
             try:
                 print(f"[{i+1}/{total_games}] Processing Detail: {row['name']}")
-                
                 driver.get(row["link"])
                 time.sleep(1)
                 
@@ -190,7 +186,7 @@ def main():
                     "简介": intro[:150] + "..." if len(intro) > 150 else intro,  
                     "标签": tags_str,
                     "厂商": factory,
-                    "预约/关注量": reserve_num
+                    "预约/关注量": reserve_num if reserve_num > 0 else "暂无数据"
                 })
             except Exception: continue
 
