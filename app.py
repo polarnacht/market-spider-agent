@@ -21,10 +21,29 @@ st.markdown("""
     .ds-header { font-size: 1.05rem; font-weight: 700; color: #0F172A; border-bottom: 2px solid #3B82F6; padding-bottom: 6px; margin-bottom: 12px; display: inline-block;}
     .ds-title { font-weight: 600; color: #1E293B; margin-top: 10px; margin-bottom: 4px; font-size: 0.95rem; }
     .ds-row { font-size: 0.85rem; color: #475569; margin-bottom: 4px; display: flex; align-items: center; }
+    
+    /* 精简标签 */
     .tag-blue { background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
     .tag-red { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
-    .guide-box { background: white; border: 1px solid #E2E8F0; padding: 15px 20px; border-radius: 8px; }
+    .tag-green { background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0; padding: 1px 6px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 8px; width: 40px; text-align: center; }
+    
+    .guide-box { background: white; border: 1px solid #E2E8F0; padding: 15px 20px; border-radius: 8px; margin-bottom: 12px;}
     code { color: #0369A1 !important; background: #F0F9FF !important; }
+    
+    /* 强制重写按钮样式为高级清爽蓝 */
+    div[data-testid="stButton"] button {
+        border: 1px solid #BFDBFE !important;
+        color: #1D4ED8 !important;
+        background-color: #EFF6FF !important;
+        border-radius: 6px !important;
+        font-weight: 600 !important;
+        transition: all 0.2s !important;
+    }
+    div[data-testid="stButton"] button:hover {
+        border: 1px solid #3B82F6 !important;
+        color: #FFFFFF !important;
+        background-color: #3B82F6 !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -56,7 +75,7 @@ with g1:
 '<b>🎯 单点深度提取</b> <span style="font-size:0.85rem; color:#64748B;">(用于精准获取某个榜单)</span><br>'
 '语法：<code>提取 [时间/分类] [数据源] [数量]</code>'
 '</div>', unsafe_allow_html=True)
-    st.button("👉 点击填入示例：提取 国内直播 10", on_click=trigger_shortcut, args=("提取 国内直播 10",), type="primary", use_container_width=True)
+    st.button("▶ 示例运行：提取 国内直播 10", on_click=trigger_shortcut, args=("提取 国内直播 10",), use_container_width=True)
 
 with g2:
     st.markdown(
@@ -64,11 +83,11 @@ with g2:
 '<b>🌐 宏观大盘联动</b> <span style="font-size:0.85rem; color:#64748B;">(并发拉起多数据源，生成研报)</span><br>'
 '语法：<code>分析 [时间] [行业大类]</code>'
 '</div>', unsafe_allow_html=True)
-    st.button("👉 点击填入示例：分析 4月 手游大盘", on_click=trigger_shortcut, args=("分析 4月 手游大盘",), type="primary", use_container_width=True)
+    st.button("▶ 示例运行：分析 4月 手游大盘", on_click=trigger_shortcut, args=("分析 4月 手游大盘",), use_container_width=True)
 
 st.markdown("---")
 
-# --- 模块 B: 数据源明细 (同步更新限制文案) ---
+# --- 模块 B: 数据源明细 (纯净无属性展示) ---
 st.markdown("### 🗂️ 数据源能力明细")
 d1, d2, d3 = st.columns(3)
 
@@ -78,10 +97,10 @@ with d1:
 '<div class="ds-header">📱 手游模块</div>'
 '<div class="ds-title">TapTap 预约榜</div>'
 '<div class="ds-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>'
-'<div class="ds-row"><span class="tag-red">限制</span> 云端限流，最高限 50 条</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 仅实时快照，无历史回溯</div>'
 '<div class="ds-title" style="margin-top: 18px;">玩匠(16P) 开测榜</div>'
 '<div class="ds-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>'
-'<div class="ds-row"><span class="tag-red">限制</span> 详情穿透慢，最高限 50 条</div>'
+'<div class="ds-row"><span class="tag-green">支持</span> 支持历史大盘数据回溯</div>'
 '</div>', unsafe_allow_html=True)
 
 with d2:
@@ -90,10 +109,10 @@ with d2:
 '<div class="ds-header">💻 PC & 直播模块</div>'
 '<div class="ds-title">Steam 愿望榜</div>'
 '<div class="ds-row"><span class="tag-blue">参数</span> 提取数量 (前N名)</div>'
-'<div class="ds-row"><span class="tag-red">限制</span> 云端限流，最高限 50 条</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 实时接口，无历史回溯</div>'
 '<div class="ds-title" style="margin-top: 18px;">国内外直播榜</div>'
 '<div class="ds-row"><span class="tag-blue">参数</span> 国内(播酱) / 国外(Twitch)</div>'
-'<div class="ds-row"><span class="tag-red">限制</span> 云端限流，最高限 50 条</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 国内按月统计，国外近30日</div>'
 '</div>', unsafe_allow_html=True)
 
 with d3:
@@ -102,15 +121,15 @@ with d3:
 '<div class="ds-header">🎬 影视 IP 模块</div>'
 '<div class="ds-title">豆瓣 影视榜</div>'
 '<div class="ds-row"><span class="tag-blue">参数</span> 国产 / 欧美 / 日剧 / 韩剧</div>'
-'<div class="ds-row"><span class="tag-red">限制</span> WAF强防护，最高限 20 条</div>'
+'<div class="ds-row"><span class="tag-red">限制</span> 极易触发WAF防护建议单点</div>'
 '<div class="ds-title" style="margin-top: 18px;">IMDb 趋势榜</div>'
 '<div class="ds-row"><span class="tag-blue">参数</span> 年份、月份、提取数量</div>'
-'<div class="ds-row"><span class="tag-red">限制</span> 云端限流，最高限 50 条</div>'
+'<div class="ds-row"><span class="tag-green">支持</span> 支持指定历史年月回溯</div>'
 '</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 
-# ================= 4. 核心执行引擎 (最高水位熔断防护) =================
+# ================= 4. 核心执行引擎 (后端静默限流 50) =================
 def run_spider(script, params):
     task_id = str(uuid.uuid4())[:8]
     out = f"res_{task_id}.csv"
@@ -142,17 +161,14 @@ def parse_intent(prompt):
     
     num_match = re.search(r'前\s*(\d+)|(\d+)\s*[名条个]|(?:^|\s)(\d{1,3})(?:\s|$)', clean_p)
     
-    # 强制安全限流逻辑
     limit = None
     if num_match:
         raw_limit = int(num_match.group(1) or num_match.group(2) or num_match.group(3))
-        # 无论用户输入多大，最高强制拦截在 50 (保证云端不超时)
-        limit = str(min(raw_limit, 50))
+        limit = str(min(raw_limit, 50)) # 后端静默安全熔断
 
     is_pan_entertainment = any(k in p for k in ["泛娱乐", "全行业", "全局", "综合"])
     is_sector_macro = "大盘" in p
     
-    # 大盘默认提取量安全下调：标准源50条，重度源(需要穿透)20条
     l_hvy = limit if limit else ("20" if (is_pan_entertainment or is_sector_macro) else "5")
     l_std = limit if limit else ("50" if (is_pan_entertainment or is_sector_macro) else "10")
 
@@ -196,7 +212,7 @@ def parse_intent(prompt):
             
     return tasks
 
-# ================= 5. 会话与数据展示 =================
+# ================= 5. 会话与数据展示流 =================
 user_input = st.chat_input("在此处手敲指令，或点击上方示例按钮...")
 
 active_prompt = None
@@ -234,21 +250,49 @@ if active_prompt:
 
         if fetched_results:
             st.markdown("### 📦 抓取数据结果")
+            # 统计总抓取量，供 AI 决策使用
+            total_rows = sum(len(res['df']) for res in fetched_results)
+            
             for res in fetched_results:
                 with st.expander(f"查看 {res['script']} 原始表格 (共 {len(res['df'])} 条)", expanded=True):
                     st.dataframe(res['df'], hide_index=True, use_container_width=True)
 
+            # ================= 高能 AI Prompt 植入区 =================
             ai_prompt = f"""
-            你是一位专业的数据分析师。请基于以下底层采集的实时结构化数据，撰写业务简报。
+            你是一位顶级的泛娱乐商业情报分析师。请基于下方的【数据表】，输出“高质量的分析结论”，绝不能进行单纯的数据复述。
             
-            底层数据源：
+            【抓取状态】
+            - 用户原始指令：{active_prompt}
+            - 本次共获取数据：{total_rows} 条
+            
+            【数据表】
             {"\n\n".join(all_dfs)}
             
-            排版要求：
-            1. 🎯 **核心结论**：一句话概括本次数据最明显的现象（加粗）。
-            2. 📊 **数据论证**：使用无序列表，引用表中的具体数值或排名来证明结论（数字必须加粗）。
-            3. 💡 **商业建议**：给出一个具体的落地建议。
+            ——————————
+            【核心规则与禁忌（绝对遵守）】
+            1. 坚守数据底线：所有的结论【必须百分之百】基于上方提供的数据表！
+            2. 绝不脑补瞎猜：如果你发现表格中缺少某些关键维度数据，请【直接跳过】，严禁使用“可能是因为”、“推测原因”等主观话术！
+            3. 禁止复述表格：要找差距、找极值、找头部集中度，而不是把表格顺着念一遍。
+            4. 不要出现“第一点/第二点”这种敷衍的词，直接使用行业小标题。
+            
+            ——————————
+            【根据数据量动态输出】
+            请判断本次数据量 {total_rows}，严格执行以下对应模式：
+            
+            👉 若数据总量 ≤ 10 条（触发【简报模式】）：
+            - 动作：不做延展分析。
+            - 格式：直接输出 3-4 条干练的无序列表。
+            - 内容：指出数据最突出的特征（如谁断层领先、谁最反常），必须带上具体数值或排名。
+            - 禁忌：禁止包含任何长篇大论的“战略启示”或宏观预测。
+            
+            👉 若数据总量 > 10 条（触发【宏观模式】）：
+            - 动作：进行横向和深度的商业研判。
+            - 格式：挑选 3-5 个最有信息量的维度，输出“小标题 + 深度结论”。
+            - 内容：
+              1. 必须包含【数据张力】：即一定要计算出明显的差距倍数、占比、或排名变动。
+              2. 必须包含【战略启示】：基于这批宏观数据，给大厂或发行方一条明确的业务落地建议。
             """
+            
             with st.chat_message("assistant"):
                 try:
                     resp = CLIENT.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": ai_prompt}])
