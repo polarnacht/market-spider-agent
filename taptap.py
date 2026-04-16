@@ -17,6 +17,7 @@ if sys.stdout.encoding != 'utf-8':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
+# 读取环境变量，默认值由 app.py 控制
 SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 5))
 OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "TapTap_Result.csv")
 BASE_URL = "https://www.taptap.cn"
@@ -29,17 +30,17 @@ def init_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
-
+    # 注入真实 UA 隐藏爬虫痕迹
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    options.add_argument(f'user-agent={ua}')
+    
     chromium_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
     chromedriver_path = shutil.which("chromedriver")
-
     if chromium_path: options.binary_location = chromium_path
     service = Service(executable_path=chromedriver_path) if chromedriver_path else Service()
     
     driver = webdriver.Chrome(service=service, options=options)
-    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
-        "source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"
-    })
+    driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {"source": "Object.defineProperty(navigator, 'webdriver', { get: () => undefined })"})
     return driver
 
 def scroll_to_bottom_then_top(driver, wait_time=1):
@@ -54,7 +55,6 @@ def scroll_to_bottom_then_top(driver, wait_time=1):
     time.sleep(wait_time)
 
 def get_game_list(driver):
-    print("正在滚动加载首页榜单数据...")
     scroll_to_bottom_then_top(driver)
     games = driver.find_elements(By.CSS_SELECTOR, "div.rank-game-cell")
     game_list = []
@@ -63,19 +63,19 @@ def get_game_list(driver):
             rank = game.find_element(By.CSS_SELECTOR, "span.rank-index").text.strip()
             name = game.find_element(By.CSS_SELECTOR, "div.text-with-tags.app-title span.text-default--size").text.strip()
             links = game.find_elements(By.CSS_SELECTOR, "a[href^='/app/']")
-            link = (BASE_URL + links[0].get_attribute("href") if links[0].get_attribute("href").startswith("/") else links[0].get_attribute("href")) if links else ""
+            href = links[0].get_attribute("href")
+            link = BASE_URL + href if href.startswith("/") else href
             game_list.append({"rank": rank, "name": name, "link": link})
         except: continue
     return game_list
 
-# ================= 核心修复：三重雷达轮询提取 =================
 def get_max_reserve_num(driver):
+    """【最终版】穿透式数值提取引擎"""
     def normalize_number(text):
         if not text: return 0
-        # 移除空格和所有非数字及非单位字符
-        text = str(text).replace(" ", "").replace(",", "").strip()
+        # 清除空格/逗号/换行，只留数字和“万/亿”
+        text = str(text).replace(" ", "").replace(",", "").replace("\n", "").strip()
         try:
-            # 提取数字部分（支持 12.5 这种浮点）
             match = re.search(r"[\d\.]+", text)
             if not match: return 0
             num = float(match.group())
@@ -87,13 +87,12 @@ def get_max_reserve_num(driver):
     def extract_from_html():
         max_v = 0
         try:
-            # 策略：根据你提供的 HTML 源码精准定位
-            # 寻找所有包含 single-info__content 的块
-            info_blocks = driver.find_elements(By.CSS_SELECTOR, ".single-info__content")
-            for block in info_blocks:
-                block_text = block.get_attribute("textContent") # 穿透式提取内容
-                if "预约" in block_text or "关注" in block_text:
-                    # 尝试定位那个包含数值的具体 div
+            # 针对你提供的源码精准定位 single-info__content
+            blocks = driver.find_elements(By.CSS_SELECTOR, ".single-info__content")
+            for block in blocks:
+                # 使用 get_attribute("textContent") 强行穿透 CSS 样式获取原始字符
+                full_text = block.get_attribute("textContent")
+                if "预约" in full_text or "关注" in full_text:
                     val_elem = block.find_element(By.CSS_SELECTOR, ".single-info__content__value")
                     val_str = val_elem.get_attribute("textContent")
                     max_v = max(max_v, normalize_number(val_str))
@@ -101,113 +100,71 @@ def get_max_reserve_num(driver):
         return max_v
 
     global_max = 0
-    # 强制等待目标元素在页面上“现身”
-    try:
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content__value"))
-        )
+    # 等待 Vue 核心数据节点现身
+    try: WebDriverWait(driver, 6).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content__value")))
     except: pass
 
     try:
-        # 检查是否有切换按钮（多端情况）
         btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
         if btns:
+            # 严格循环点击模式
             for i in range(len(btns)):
-                # 重新获取按钮，防止页面刷新导致失效
-                refresh_btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
-                btn = refresh_btns[i]
+                fresh_btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+                btn = fresh_btns[i]
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
                 driver.execute_script("arguments[0].click();", btn)
-                time.sleep(1.2) # 给 Vue 组件一点数据挂载时间
+                time.sleep(1.2) # 留出 DOM 更新缓冲
                 global_max = max(global_max, extract_from_html())
         else:
-            # 单端情况直接抓
             global_max = extract_from_html()
     except:
         global_max = extract_from_html()
-
     return global_max if global_max > 0 else "暂无数据"
-# ==============================================================
-
-def get_additional_info(driver):
-    try: return ", ".join([tag.text.strip() for tag in driver.find_elements(By.CSS_SELECTOR, "a.app-intro__tag-item")])
-    except: return ""
 
 def get_publisher(driver):
     try:
-        for el in driver.find_elements(By.XPATH, "//*[contains(text(), '供应商') or contains(text(), '发行商') or contains(text(), '开发商')]"):
-            text = el.text.strip()
-            if 2 < len(text) < 40: 
-                for prefix in ["供应商", "发行商", "开发商", "厂商", ":", "：", " "]: text = text.replace(prefix, "")
-                if text: return text.strip()
-    except: pass
-    try: return driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").text.strip()
-    except: pass
-    try: return driver.find_element(By.CSS_SELECTOR, "a.developer-name, span.developer-text").text.strip()
-    except: pass
-    return "暂无信息"
+        # 优先取包含“厂商”字样的兄弟节点
+        factory = driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").get_attribute("textContent").strip()
+        return factory
+    except:
+        return "暂无信息"
 
 def get_intro_full(driver):
     try:
-        summary = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.app-intro__summary")))
-        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", summary)
-        time.sleep(0.3)
+        summary = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.app-intro__summary")))
         driver.execute_script("arguments[0].click();", summary)
         time.sleep(0.5)
-        try:
-            summary_div = WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14")))
-            intro_text = summary_div.text.strip()
-            if intro_text: return intro_text
-            more_button = summary_div.find_element(By.CSS_SELECTOR, "div.text-modal__more.clickable span")
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", more_button)
-            driver.execute_script("arguments[0].click();", more_button)
-            time.sleep(0.5)
-            return WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, "p.text-modal__text"))).get_attribute("innerText").strip()
-        except: return ""
+        intro = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.text-modal.paragraph-m14-w14"))).get_attribute("textContent").strip()
+        return intro[:150] + "..." if len(intro) > 150 else intro
     except: return ""
 
 def main():
-    print(f"TapTap Kernel Running: Target Top {SCRAPE_LIMIT}")
+    print(f"TapTap Kernel Starting: Top {SCRAPE_LIMIT}")
     driver = init_driver()
     try:
         driver.get("https://www.taptap.cn/top/reserve")
-        time.sleep(3) 
-
+        time.sleep(3)
         games = get_game_list(driver)
         results = []
-        total_games = len(games)
-
+        total = len(games)
         for i, row in enumerate(games):
-            try:
-                print(f"[{i+1}/{total_games}] Processing Detail: {row['name']}")
-                
-                driver.get(row["link"])
-                # 去掉无脑的 sleep(1)，让提取函数自己去智能轮询
-                
-                tags_str = get_additional_info(driver)
-                factory = get_publisher(driver)
-                intro = get_intro_full(driver)
-                
-                # 触发提取核心引擎
-                reserve_num = get_max_reserve_num(driver)
-
-                results.append({
-                    "排名": row["rank"],
-                    "名称": row["name"],
-                    "简介": intro[:150] + "..." if len(intro) > 150 else intro,  
-                    "标签": tags_str,
-                    "厂商": factory,
-                    "预约/关注量": reserve_num if reserve_num > 0 else "暂无数据"
-                })
-            except Exception: continue
+            print(f"[{i+1}/{total}] Processing: {row['name']}")
+            driver.get(row["link"])
+            time.sleep(1)
+            
+            results.append({
+                "排名": row["rank"],
+                "名称": row["name"],
+                "标签": ", ".join([t.text.strip() for t in driver.find_elements(By.CSS_SELECTOR, "a.app-intro__tag-item")]),
+                "厂商": get_publisher(driver),
+                "预约/关注量": get_max_reserve_num(driver),
+                "简介": get_intro_full(driver)
+            })
 
         if results:
             df = pd.DataFrame(results)
-            cols = ["排名", "名称", "标签", "厂商", "预约/关注量", "简介"]
-            df = df[[c for c in cols if c in df.columns]]
             df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
-            print(f"File Saved: {OUTPUT_FILE}")
-        else: print("未能抓取到任何有效数据。")
+            print(f"✅ Success: {OUTPUT_FILE}")
     finally:
         driver.quit()
 
