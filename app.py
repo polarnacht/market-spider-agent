@@ -35,42 +35,43 @@ with st.sidebar:
     st.markdown("**系统监控状态**")
     st.caption("🟢 容器化运行: 正常")
     st.caption("🟢 数据流监听: 开启")
-    st.caption("🟢 复合调度引擎: 就绪")
+    st.caption("🟢 四源复合引擎: 就绪")
 
-# --- 3. 数据源与指令说明 (完美排版保留) ---
+# --- 3. 数据源与指令说明 (升级为 2x2 网格) ---
 with st.expander("📌 数据源规格与指令说明 (点击展开)", expanded=True):
-    st.markdown("本系统支持**单点精细查询**与**跨界宏观大盘分析**，底层依托三大核心模块：")
+    st.markdown("本系统支持**单点精细查询**与**跨界宏观大盘分析**，底层依托四大核心模块：")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
     with col1:
-        st.markdown("### 📱 模块一：手游大盘\n**(TapTap 预约榜)**")
+        st.markdown("### 📱 手游大盘 (TapTap 预约榜)")
         st.markdown("""
-        * **数据时效**：实时快照，不支持历史回溯。
-        * **包含字段**：排名、名称、简介、标签、厂商、预约量。
-        * **提取限制**：建议单次提取不超过 200 条。
+        * **时效**：实时快照，无历史回溯。
+        * **价值**：反映国内中长期的产品潜力与玩家关注度。
+        """)
+        st.markdown("### 📅 手游节点 (玩匠 开测榜)")
+        st.markdown("""
+        * **时效**：按月检索，获取近期密集开测的标的。
+        * **价值**：追踪厂商短线宣发节点与测试期热度转化。
         """)
     with col2:
-        st.markdown("### 💻 模块二：PC 端游大盘\n**(Steam 愿望榜)**")
+        st.markdown("### 💻 PC 端游大盘 (Steam 愿望榜)")
         st.markdown("""
-        * **数据时效**：实时数据（含近7日/30日热度变化）。
-        * **包含字段**：排名、名称、热度增量、开发商、发行商。
-        * **提取限制**：建议单次提取不超过 200 条。
+        * **时效**：实时动能（含近7日/30日热度变化）。
+        * **价值**：全球独立游戏与 3A 商业大作的买断制大盘。
         """)
-    with col3:
-        st.markdown("### 🎬 模块三：泛娱乐大盘\n**(IMDb 影视榜)**")
+        st.markdown("### 🎬 泛娱乐大盘 (IMDb 影视榜)")
         st.markdown("""
-        * **数据时效**：按自然月度支持历史回溯。
-        * **包含字段**：排名、名称、评分、链接。
-        * **提取限制**：未指定年月则默认拉取当前最新月份。
+        * **时效**：自然月度历史回溯。
+        * **价值**：跨越游戏边界，洞察全球影视 IP 流行趋势。
         """)
     
     st.divider()
     st.markdown("""
     #### 💡 指令范例 (支持智能参数缺省)
-    * **【单点精细提取】**：`提取 taptap 预约榜前 5 名` *(提取指定数量进行简报)*
-    * **【单点宏观大盘】**：`分析 steam 整体情况` *(缺省数量，系统默认拉取200条分析)*
-    * **【跨端游戏大盘】**：`分析目前所有游戏整体情况` *(联动 手游+PC，各200条跨平台对比)*
-    * **【全局泛娱乐分析】**：`分析所有市场大盘情况` *(三源并发，生成究极跨界研报)*
+    * **【单点精细提取】**：`提取 玩匠 2026年2月 开测榜前 10 名`
+    * **【手游生命周期联动】**：`分析国内手游整体情况` *(联动 TapTap预约 + 玩匠开测，看穿大盘长短线)*
+    * **【跨端游戏联动】**：`分析目前所有游戏大盘情况` *(联动 手游 + PC)*
+    * **【全局聚合研报】**：`生成泛娱乐全行业分析简报` *(四源并发，终极跨界研报)*
     """)
 
 # --- 4. 实时调度内核 ---
@@ -118,47 +119,55 @@ def run_spider_with_progress(script_name, params):
     return_code = process.wait()
     return return_code, output_csv, "\n".join(full_logs)
 
-# --- 5. 复合意图解析器 (完美兼顾单点与聚合) ---
+# --- 5. 复合意图解析器 (新增对 玩匠/开测 的路由) ---
 def parse_intent(prompt):
     p_lower = prompt.lower()
     
-    # 1. 尝试显式提取用户指定的数值
     limit_match = re.search(r'(\d+)名|前\s*(\d+)|(\d+)条', prompt)
     explicit_limit = limit_match.group(1) or limit_match.group(2) or limit_match.group(3) if limit_match else None
     
-    # 2. 尝试提取具体年月 (默认取当前时间)
     date_match = re.search(r'(\d{4})[年-]\s*(\d{1,2})', prompt)
     now = datetime.now()
     year = date_match.group(1) if date_match else str(now.year)
     month = date_match.group(2) if date_match else str(now.month).zfill(2)
 
-    # 3. 宏观语义判定
-    is_macro = any(kw in p_lower for kw in ["所有", "整体", "大盘", "全局"])
+    is_macro = any(kw in p_lower for kw in ["所有", "整体", "大盘", "全局", "全行业"])
     
-    # 4. 动态数值策略：用户指定 > 宏观默认(200) > 单点默认(5)
+    # 玩匠由于需要搜索TapTap详情，耗时较长，宏观模式限制在20条以内保证体验
+    wanjiang_limit = explicit_limit if explicit_limit else ("20" if is_macro else "5")
     final_limit = explicit_limit if explicit_limit else ("200" if is_macro else "5")
 
     tasks = []
     
-    # 路由一：全局泛娱乐联动 (所有市场/泛娱乐整体)
-    if "所有市场" in p_lower or "泛娱乐大盘" in p_lower or ("所有" in p_lower and "整体" in p_lower):
+    # 路由一：全局全行业联动 (四源并发)
+    if "全行业" in p_lower or "泛娱乐" in p_lower or ("所有市场" in p_lower):
+        tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": wanjiang_limit, "YEAR": year, "MONTH": month}})
         tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": final_limit}})
         tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": final_limit}})
         tasks.append({"script": "imdb.py", "env": {"SCRAPE_LIMIT": final_limit, "YEAR": year, "MONTH": month}})
         
-    # 路由二：跨端游戏联动 (所有游戏)
+    # 路由二：跨端游戏联动 (三大游戏源)
     elif "所有游戏" in p_lower or ("游戏" in p_lower and is_macro):
+        tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": wanjiang_limit, "YEAR": year, "MONTH": month}})
         tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": final_limit}})
         tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": final_limit}})
         
-    # 路由三：精准单模块 / 垂直赛道
+    # 路由三：国内手游生命周期联动 (开测 + 预约)
+    elif "手游" in p_lower and is_macro:
+        tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": wanjiang_limit, "YEAR": year, "MONTH": month}})
+        tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": final_limit}})
+
+    # 路由四：精准单模块
     else:
-        if "手游" in p_lower or "tap" in p_lower:
+        if "手游" in p_lower or "tap" in p_lower or "预约" in p_lower:
             tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": final_limit}})
         if "端游" in p_lower or "pc" in p_lower or "steam" in p_lower:
             tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": final_limit}})
         if "影视" in p_lower or "imdb" in p_lower:
             tasks.append({"script": "imdb.py", "env": {"SCRAPE_LIMIT": final_limit, "YEAR": year, "MONTH": month}})
+        # 新增玩匠入口
+        if "玩匠" in p_lower or "开测" in p_lower or "测试" in p_lower:
+            tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": wanjiang_limit, "YEAR": year, "MONTH": month}})
             
     return tasks
 
@@ -170,7 +179,7 @@ for chat in st.session_state.history:
     with st.chat_message(chat["role"]):
         st.markdown(chat["content"])
 
-if prompt := st.chat_input("输入提取指令 (参考上方指令范例)..."):
+if prompt := st.chat_input("输入提取指令 (例：分析国内手游整体情况)..."):
     st.session_state.history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -187,8 +196,8 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令范例)..."):
                 script_file = task["script"]
                 env_vars = task["env"]
                 
-                module_name = "手游(TapTap)" if "tap" in script_file else "PC端游(Steam)" if "steam" in script_file else "影视(IMDb)"
-                st.write(f"🔄 正在拉起 `{module_name}` 采集引擎...")
+                module_name = "近期开测(玩匠)" if "wanjiang" in script_file else "手游预约(TapTap)" if "tap" in script_file else "PC端游(Steam)" if "steam" in script_file else "影视(IMDb)"
+                st.write(f"🔄 正在拉起 `{module_name}` 引擎...")
                 
                 ret_code, res_csv, final_logs = run_spider_with_progress(script_file, env_vars)
 
@@ -196,14 +205,14 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令范例)..."):
                     df = pd.read_csv(res_csv)
                     data_len = len(df)
                     total_data_count += data_len
-                    st.success(f"✅ `{module_name}` 模块抓取完成，加载 {data_len} 条数据。")
+                    st.success(f"✅ `{module_name}` 抓取完成，加载 {data_len} 条数据。")
                     
                     st.dataframe(df)
                     combined_md_list.append(f"### 【{module_name} 模块数据】\n" + df.to_markdown(index=False))
                     os.remove(res_csv)
                 else:
                     has_error = True
-                    st.error(f"❌ `{module_name}` 执行失败，请检查反爬机制或日志：")
+                    st.error(f"❌ `{module_name}` 执行失败，请检查诊断日志：")
                     with st.expander("展开内核诊断日志"):
                         st.code(final_logs)
 
@@ -211,17 +220,18 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令范例)..."):
                 status.update(label=f"数据汇集完毕！共计 {total_data_count} 条，正在调用 AI 引擎生成洞察...", state="running")
                 
                 # === 动态分析策略引擎 ===
-                if len(tasks) >= 2:
-                    analysis_strategy = "本次分析包含【跨平台/跨界】的多源复合数据。请在宏观概览的基础上，增加『跨端趋势对比』，提炼出具有全局视角的宏观商业洞察。"
+                if len(tasks) >= 3:
+                    analysis_strategy = "本次分析包含【跨界大盘】多源数据。请在宏观概览基础上，重点提炼各平台/生态的竞争特征差异，输出具有顶层视角的全局商业洞察。"
+                elif any("wanjiang" in t["script"] for t in tasks) and any("tap" in t["script"] for t in tasks):
+                    analysis_strategy = "本次分析联动了手游市场的【即将开测（短线热度）】与【长期预约（中长线潜力）】双榜单。请交叉对比两份数据，分析厂商的宣发节奏特征与赛道布局规律。"
                 elif total_data_count <= 10:
-                    analysis_strategy = "提取核心标的信息。请直接以精炼的无序列表形式输出这几款产品的关键数据表现，不做发散性的宏观趋势分析。"
+                    analysis_strategy = "提取核心标的信息。请直接以精炼的无序列表形式输出关键数据表现，不做发散性的宏观趋势分析。"
                 else:
-                    analysis_strategy = "进行垂直赛道的宏观数据概览。重点关注：1. 头部资源的集中度；2. 增速最快或口碑最佳的标的；3. 整体品类/题材特征。"
+                    analysis_strategy = "进行垂直赛道的宏观数据概览。重点关注：1. 头部资源的集中度；2. 增速最快或关注度最高的标的；3. 整体品类/题材特征。"
 
                 final_data_md = "\n\n".join(combined_md_list)
 
                 with st.chat_message("assistant"):
-                    # === 最终版高管分析 Prompt (完美保留高级排版约束) ===
                     ai_prompt = f"""
 你是一位顶尖的【泛娱乐与游戏行业商业分析师】。
 请基于提供的实时抓取数据，精准响应用户需求。你的输出将直接作为高管汇报的 Brief，必须具备极高的“信息密度”和“专业度”。
@@ -234,7 +244,7 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令范例)..."):
 
 【分析准则：三大纪律】
 1. 事实绝对保真：所有结论必须且只能从《原始数据表》中推导，严禁引入外部记忆或主观猜测。
-2. 拒绝数据复读：必须提炼出数据背后的“业务特征”（如：资源集中度、跨端平台壁垒、赛道趋势等）。
+2. 拒绝数据复读：必须提炼出数据背后的“业务特征”（如：长短线生命周期分布、赛道壁垒等）。
 3. 拒绝废话文学：严禁使用“整体表现良好”等无信息量空话。若数据不足直接跳过。
 
 【输出排版规范】
@@ -244,9 +254,9 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令范例)..."):
 直接使用紧凑的无序列表，提炼各标的的核心数值特征。
 
 👉 如果【洞察策略】要求宏观概览或跨平台对比时，请严格按照以下格式输出 3-5 个高阶结论：
-### 💡 [提炼具有行业视角的小标题，如：大厂垄断头部，断层优势明显]
+### 💡 [提炼具有行业视角的小标题，如：中长线RPG霸榜，短线休闲品类密集测试]
 - **数据**：[提取表格中的具体排名、数值差距或集中度占比]
-- **结论**：[客观说明该数据反映的竞争格局或市场结构特征]
+- **结论**：[客观说明该数据反映的市场规律或宣发节点特征]
 
 【高阶报告要求（极其重要）】
 - 数据张力：在【数据】部分，请多计算并使用“倍数、占比、差距”等对比性词汇，并将核心数字用 **加粗** 标出。
@@ -271,4 +281,4 @@ if prompt := st.chat_input("输入提取指令 (参考上方指令范例)..."):
                 status.update(label="调度终止，未获取到有效数据", state="error")
 
     else:
-        st.warning("指令无法解析。请确保指令包含触发关键字（如：taptap前5名 / steam整体情况 / 所有游戏大盘）。")
+        st.warning("指令无法解析。请确保指令包含触发关键字（如：玩匠开测榜 / 手游整体情况 / 泛娱乐大盘）。")
