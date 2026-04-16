@@ -1,170 +1,259 @@
 import streamlit as st
 import pandas as pd
-import time
+import subprocess
+import os
+import re
+import uuid
+import sys
 from datetime import datetime
+from openai import OpenAI
 
-# ================= 1. 全局配置与视觉样式 =================
-st.set_page_config(page_title="泛娱乐数据抓取 Agent", layout="wide", page_icon="🌐")
+# ================= 1. 核心配置与视觉样式 =================
+API_KEY = st.secrets.get("api_key", "sk-cc6655649d204550bd5bcffd355ab4dd")
+CLIENT = OpenAI(api_key=API_KEY, base_url="https://api.deepseek.com")
 
-# 注入自定义 CSS，强化层级结构与卡片质感
+st.set_page_config(page_title="泛娱乐数据 Agent", layout="wide", page_icon="🌐")
+
+# 注入自定义 CSS，强化卡片质感与层级
 st.markdown("""
     <style>
-    .main { background-color: #F9FAFB; }
-    /* 卡片样式 */
-    .feature-card {
-        background-color: #ffffff;
-        border: 1px solid #E5E7EB;
-        padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        height: 100%;
-    }
-    .feature-card h4 { color: #1F2937; margin-top: 0; font-size: 1.1rem; border-bottom: 2px solid #3B82F6; display: inline-block; padding-bottom: 4px;}
-    .feature-card p { color: #4B5563; font-size: 0.9rem; margin-top: 10px; line-height: 1.5; }
-    /* 弱化辅助文字 */
-    .helper-text { color: #9CA3AF; font-size: 0.85rem; }
+    .main { background-color: #F8FAFC; }
+    .source-card { background: white; border: 1px solid #E2E8F0; padding: 16px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.02); height: 100%; }
+    .source-card h4 { color: #1E293B; margin-top: 0; font-size: 1.05rem; border-bottom: 2px solid #3B82F6; padding-bottom: 5px; display: inline-block; }
+    .tag-blue { background: #DBEAFE; color: #1E40AF; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 5px;}
+    .tag-red { background: #FEE2E2; color: #991B1B; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 5px;}
+    /* 弱化状态文字 */
+    .status-text { color: #64748B; font-size: 0.85rem; }
     </style>
     """, unsafe_allow_html=True)
 
-# ================= 2. 左侧侧边栏 (弱化技术，强化使用) =================
+# ================= 2. 左侧侧边栏 (任务工作台) =================
 with st.sidebar:
     st.image("https://api.dicebear.com/7.x/shapes/svg?seed=agent&backgroundColor=3b82f6", width=50)
-    st.markdown("### 📌 运行状态")
-    st.caption("🎯 当前模式：泛娱乐分析")
-    st.caption("📡 数据源状态：正常连接")
-    st.caption(f"🕘 当前时间：{datetime.now().strftime('%Y-%m-%d')}")
+    st.markdown("### ⚙️ 分析控制台")
+    
+    st.markdown("#### 🎯 AI 洞察视角")
+    analysis_mode = st.selectbox(
+        "选择报告侧重点",
+        ["📈 大盘趋势与核心结论", "🔥 爆款基因与特征挖掘", "⚔️ 赛道竞品数据对比", "🌐 跨端影游联动分析"],
+        label_visibility="collapsed"
+    )
     
     st.divider()
+    st.markdown("#### 📡 探针健康度")
+    st.caption("🟢 手游模块: TapTap | 玩匠")
+    st.caption("🟢 PC直播: Steam | Twitch | 播酱")
+    st.caption("🟢 影视模块: 豆瓣 | IMDb")
     
-    st.markdown("### ⭐ 历史记录")
-    st.button("📄 豆瓣电影TOP20_0416", use_container_width=True)
-    st.button("📄 IMDb热门剧集_0415", use_container_width=True)
-    st.button("📄 手游日韩出海对比_0410", use_container_width=True)
-
-# ================= 3. 顶部导航与模块切换 =================
-st.title("🌐 泛娱乐数据抓取 Agent")
-
-# 模块切换 Tabs
-tab_mobile, tab_pc, tab_pan = st.tabs(["👉 手游模块", "👉 PC 端游", "👉 泛娱乐综合（当前选中）"])
-
-with tab_pan:
-    # ================= 4. 主操作区 (第一视觉焦点) =================
-    st.markdown("### 🤖 告诉 Agent 你需要什么数据")
-    
-    # 状态管理：用于快捷模板的点击填充
-    if 'search_query' not in st.session_state:
-        st.session_state.search_query = ""
-
-    def update_query(new_query):
-        st.session_state.search_query = new_query
-
-    # 大输入框与主按钮
-    col_input, col_btn = st.columns([5, 1])
-    with col_input:
-        query = st.text_input(
-            "指令输入", 
-            value=st.session_state.search_query,
-            placeholder="请输入抓取指令，例如：获取豆瓣2026年高评分电影TOP10...", 
-            label_visibility="collapsed"
-        )
-    with col_btn:
-        submit = st.button("🔍 开始抓取", type="primary", use_container_width=True)
-
-    # 快捷模板（可点击填充）
-    st.markdown('<p class="helper-text">✨ 快捷模板（点击直接填充）：</p>', unsafe_allow_html=True)
-    t1, t2, t3, t4 = st.columns(4)
-    t1.button("📊 抓取豆瓣高评电影 TOP20", on_click=update_query, args=("抓取豆瓣高评分电影 TOP20",), use_container_width=True)
-    t2.button("🎬 获取 IMDb 本月热门剧集", on_click=update_query, args=("获取 IMDb 本月热门剧集",), use_container_width=True)
-    t3.button("🎮 抓取某手游详情页数据", on_click=update_query, args=("抓取《黑神话》手游详情页商业数据",), use_container_width=True)
-    t4.button("📈 对比日韩 vs 欧美评分", on_click=update_query, args=("对比日韩 vs 欧美影视评分趋势",), use_container_width=True)
-
-    # ================= 5. 参数筛选区 (辅助，选填) =================
-    with st.expander("⚙️ 结构化参数筛选 (选填，不填则默认智能推断)"):
-        f1, f2, f3 = st.columns(3)
-        f1.selectbox("📍 地区筛选", ["自动推断", "欧美", "日韩", "国产"])
-        f2.text_input("📅 时间范围", placeholder="例如：2026年3月")
-        f3.selectbox("🔢 抓取数量", ["智能默认", "TOP10", "TOP20", "自定义"])
-
     st.divider()
+    if st.button("🧹 清空看板并返回首页", use_container_width=True):
+        st.session_state.history = []
+        st.rerun()
+    st.caption(f"🕘 系统时间：{datetime.now().strftime('%Y-%m-%d')}")
 
-    # ================= 6. 抓取能力与数据源说明 (结构化卡片) =================
-    st.markdown("### 🎯 抓取能力模式")
+# ================= 3. 顶部：全局导航与说明书 =================
+st.title("🌐 泛娱乐大盘情报 Agent")
+
+# 始终悬浮的数据源说明书（折叠状态）
+with st.expander("📖 **数据源图谱 & Prompt 指南 (点击展开)**", expanded=False):
+    st.markdown("### 💡 如何下达指令？")
+    st.info("**标准公式**：`[动作]` + `[时间/分类]` + `[数据源]` + `[提取数量]`\n\n"
+            "👉 **单点提取**：`提取 豆瓣韩剧 前20名` *(系统将启动详情页穿透)*\n"
+            "👉 **大盘联动**：`分析 4月 泛娱乐全行业` *(不带数字时，系统自动执行大盘默认上限 20~200条)*")
+    
+    st.markdown("### 🗂️ 挂载数据源能力明细")
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown("""
-        <div class="feature-card">
-            <h4>📍 单点深挖模式</h4>
-            <p>• 输入具体对象（电影/游戏/主页）<br>• 获取完整详情（评分、评论、受众画像等）</p>
+        <div class="source-card">
+            <h4>📱 手游数据</h4>
+            <p><b>TapTap 预约榜</b><br>
+            <span class="tag-blue">属性</span>累计预约量、厂商、标签<br>
+            <span class="tag-red">限制</span>仅实时快照，无历史回溯</p>
+            <p><b>玩匠(16P) 开测榜</b><br>
+            <span class="tag-blue">属性</span>测试节点、最高关联预约<br>
+            <span class="tag-blue">参数</span>支持指定年份、月份</p>
         </div>
         """, unsafe_allow_html=True)
     with c2:
         st.markdown("""
-        <div class="feature-card">
-            <h4>📋 榜单聚合模式</h4>
-            <p>• 支持 TOP N 批量提取<br>• 支持精确的分类/地区交叉筛选</p>
+        <div class="source-card">
+            <h4>💻 PC & 直播</h4>
+            <p><b>Steam 愿望榜</b><br>
+            <span class="tag-blue">属性</span>近期热度增量动能<br>
+            <span class="tag-red">限制</span>实时接口限制前100名</p>
+            <p><b>国内外直播活跃榜</b><br>
+            <span class="tag-blue">属性</span>活跃观众、主播、弹幕量<br>
+            <span class="tag-blue">参数</span>国内(播酱) / 国外(Twitch)</p>
         </div>
         """, unsafe_allow_html=True)
     with c3:
         st.markdown("""
-        <div class="feature-card">
-            <h4>⏱️ 时间线回溯模式</h4>
-            <p>• 支持 YEAR / MONTH 周期截取<br>• 可无缝回溯历史趋势与热度浮动</p>
+        <div class="source-card">
+            <h4>🎬 影视 IP</h4>
+            <p><b>豆瓣 影视榜</b><br>
+            <span class="tag-blue">属性</span>评分、评价人数、简介<br>
+            <span class="tag-blue">参数</span>支持 国产/欧美/日/韩<br>
+            <span class="tag-red">高危</span>极易触发WAF，限20条内</p>
+            <p><b>IMDb 趋势榜</b><br>
+            <span class="tag-blue">属性</span>全球流行度、制作年份<br>
+            <span class="tag-blue">参数</span>支持指定历史年月回溯</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
+# 状态管理：快捷指令触发器
+if "trigger_prompt" not in st.session_state:
+    st.session_state.trigger_prompt = None
+
+def set_prompt(val):
+    st.session_state.trigger_prompt = val
+
+# ================= 4. 智能欢迎面板 (仅无历史对话时显示) =================
+if len(st.session_state.get("history", [])) == 0:
     st.write("")
+    st.markdown("### ✨ 请选择快捷分析模板，或在下方直接输入指令")
     
-    # 动态数据源说明
-    st.markdown("### 📊 挂载数据源能力")
-    ds1, ds2 = st.columns(2)
-    ds1.info("**🎬 豆瓣 (Douban)**\n* 获取核心评分、评论人数、内容分类标签\n* 深度查看用户口碑与本土受众偏好")
-    ds2.info("**🌍 IMDb**\n* 获取全球权威热度排名与评分\n* 宏观分析国际流行趋势变化")
+    tab_m, tab_p, tab_f, tab_all = st.tabs(["📱 手游深挖", "💻 PC与直播热度", "🎬 影视口碑追踪", "🌐 全局行业联动"])
+    
+    with tab_m:
+        col1, col2 = st.columns(2)
+        col1.button("📊 提取当月玩匠开测前 20 名", on_click=set_prompt, args=("提取本月玩匠开测榜前20名，分析短线布局",), use_container_width=True)
+        col2.button("📈 提取 TapTap 实时预约前 50 名", on_click=set_prompt, args=("提取 TapTap 预约榜前50名，分析中长线潜力",), use_container_width=True)
+    
+    with tab_p:
+        col1, col2 = st.columns(2)
+        col1.button("🎮 提取 Steam 愿望榜前 50 名", on_click=set_prompt, args=("提取 Steam 愿望榜前50名数据",), use_container_width=True)
+        col2.button("📡 对比国内外直播热度大盘", on_click=set_prompt, args=("对比 国内直播 与 国外直播 的整体热度数据",), use_container_width=True)
 
-    # Prompt 使用说明 (折叠隐藏，弱化规则感)
-    with st.expander("✏️ 进阶：如何写出更精准的抓取指令（点击展开参考）"):
-        st.markdown("""
-        系统采用智能 NLP 路由，但包含以下**核心要素**效果更佳：
-        * **动作**：获取 / 抓取 / 对比
-        * **数据源**：豆瓣 / IMDb / 手游榜单
-        * **时间**：可选（如 2026年3月）
-        * **数量**：可选（TOP10 / TOP20）
-
-        **标准示例**：
-        > *获取豆瓣2026年高评分电影TOP10*
-        """)
-
-    # ================= 7. 状态反馈与结果展示 (执行时触发) =================
-    if submit and query:
-        st.divider()
-        st.markdown("### 📈 抓取结果看板")
+    with tab_f:
+        col1, col2 = st.columns(2)
+        col1.button("📺 获取 豆瓣欧美剧 高分TOP10", on_click=set_prompt, args=("提取豆瓣欧美剧前10名，进行口碑分析",), use_container_width=True)
+        col2.button("🌍 分析 IMDb 当月全球热门趋势", on_click=set_prompt, args=("提取本月 IMDb 趋势榜数据，分析全球热点",), use_container_width=True)
         
-        # 状态反馈区
-        with st.status("📡 正在执行 Agent 调度网络...", expanded=True) as status:
-            st.write("⏳ 正在解析自然语言指令特征...")
-            time.sleep(0.8)
-            st.write(f"📡 穿透请求目标数据源 (指令匹配: {query})...")
-            time.sleep(1.2)
-            st.write("📊 正在清洗并整理结构化结果...")
-            time.sleep(1)
-            status.update(label="✅ 抓取与清洗完毕！", state="complete", expanded=False)
+    with tab_all:
+        st.button("🚀 一键生成本月【泛娱乐全行业】商业简报 (并发7大数据源)", type="primary", on_click=set_prompt, args=("生成本月泛娱乐全行业大盘分析简报",), use_container_width=True)
 
-        # 结果摘要
-        r1, r2, r3 = st.columns(3)
-        r1.metric("📦 已抓取数据量", "20 条")
-        r2.metric("📅 覆盖时间跨度", "2026年全年")
-        r3.metric("🎯 命中的数据源", "豆瓣 Douban")
+st.markdown("---")
 
-        # 数据列表 (模拟展示)
-        mock_data = pd.DataFrame({
-            "排名": [1, 2, 3, 4, 5],
-            "影视名称": ["星际穿越 (重映)", "肖申克的救赎 (4K)", "盗梦空间", "沙丘2", "三体 (腾讯版)"],
-            "豆瓣评分": [9.4, 9.7, 9.4, 8.6, 8.9],
-            "评价人数": ["250万+", "310万+", "210万+", "85万+", "120万+"],
-            "地区": ["欧美", "欧美", "欧美", "欧美", "国产"]
-        })
-        st.dataframe(mock_data, use_container_width=True, hide_index=True)
+# ================= 5. 执行内核与解析引擎 =================
+def run_spider(script, params):
+    task_id = str(uuid.uuid4())[:8]
+    out = f"res_{task_id}.csv"
+    env = os.environ.copy()
+    env.update(params)
+    env["OUTPUT_FILE"] = out
+    p = subprocess.Popen([sys.executable, "-u", os.path.abspath(script)], env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors='replace')
+    bar = st.progress(0); msg = st.empty()
+    while True:
+        line = p.stdout.readline()
+        if not line and p.poll() is not None: break
+        if line:
+            msg.markdown(f'<span class="status-text">📡 引擎网络 [{script}]: {line.strip()[:60]}...</span>', unsafe_allow_html=True)
+            prog = re.search(r"\[(\d+)/(\d+)\]", line)
+            if prog: bar.progress(min(int(prog.group(1))/int(prog.group(2)), 1.0))
+    return p.wait(), out
 
-        # 可选操作
-        action1, action2, _ = st.columns([1, 1, 4])
-        action1.button("📥 导出 CSV 报表", type="primary", use_container_width=True)
-        action2.button("🧠 唤醒 AI 深度分析", use_container_width=True)
+def parse_intent(prompt):
+    p = prompt.lower()
+    num = re.search(r'(\d+)名|前\s*(\d+)|(\d+)条', prompt)
+    limit = num.group(1) or num.group(2) or num.group(3) if num else None
+    
+    dt = re.search(r'(\d{4})[年-]\s*(\d{1,2})', prompt)
+    mo_only = re.search(r'(\d{1,2})月', prompt)
+    now = datetime.now()
+    year = dt.group(1) if dt else str(now.year)
+    month = (dt.group(2) if dt else (mo_only.group(1) if mo_only else str(now.month))).zfill(2)
+
+    is_macro = any(k in p for k in ["所有", "整体", "大盘", "全局", "全行业", "简报", "联动"])
+    
+    # 智能水位分配
+    l_hvy = limit if limit else ("20" if is_macro else "5")
+    l_std = limit if limit else ("200" if is_macro else "5")
+
+    tasks = []
+    if any(k in p for k in ["手游", "tap", "玩匠", "测试", "大盘"]):
+        if is_macro or "tap" in p or "大盘" in p: tasks.append({"script": "taptap.py", "env": {"SCRAPE_LIMIT": l_std}})
+        if is_macro or "玩匠" in p or "测" in p or "大盘" in p: tasks.append({"script": "wanjiang.py", "env": {"SCRAPE_LIMIT": l_hvy, "YEAR": year, "MONTH": month}})
+        
+    if any(k in p for k in ["pc", "steam", "直播", "热度", "twitch"]):
+        if is_macro or "steam" in p: tasks.append({"script": "steam.py", "env": {"SCRAPE_LIMIT": l_std}})
+        if is_macro or "直播" in p or "热度" in p: 
+            tasks.append({"script": "domestic_live.py", "env": {"SCRAPE_LIMIT": l_std}})
+            tasks.append({"script": "intl_live.py", "env": {"SCRAPE_LIMIT": l_std}})
+
+    if any(k in p for k in ["影视", "豆瓣", "imdb", "剧", "全行业", "泛娱乐"]):
+        if is_macro or "imdb" in p: tasks.append({"script": "imdb.py", "env": {"SCRAPE_LIMIT": l_std, "YEAR": year, "MONTH": month}})
+        if is_macro or "豆瓣" in p or "剧" in p:
+            tags = []
+            if "欧美" in p: tags.append("欧美剧")
+            if "韩" in p: tags.append("韩剧")
+            if "日" in p: tags.append("日剧")
+            if "国产" in p: tags.append("国产剧")
+            if not tags: tags = ["欧美剧"] # 缺省
+            for t in tags:
+                tasks.append({"script": "douban.py", "env": {"SCRAPE_LIMIT": l_hvy, "DOUBAN_TAG": t}})
+            
+    return tasks
+
+# ================= 6. 对话渲染与主控流 =================
+for chat in st.session_state.history:
+    with st.chat_message(chat["role"]): st.markdown(chat["content"])
+
+user_input = st.chat_input("或在此手动输入指令 (例：提取 4月玩匠 前20名)...")
+active_prompt = st.session_state.trigger_prompt or user_input
+
+if active_prompt:
+    st.session_state.trigger_prompt = None # 消费触发器
+    st.session_state.history.append({"role": "user", "content": active_prompt})
+    
+    # 触发后重新渲染一次，以隐藏 Welcome Dashboard
+    if len(st.session_state.history) == 1:
+        st.rerun()
+        
+    with st.chat_message("user"): st.markdown(active_prompt)
+
+    tasks = parse_intent(active_prompt)
+    if tasks:
+        all_dfs = []
+        with st.status(f"⏳ 正在执行 Agent 调度网络 (命中 {len(tasks)} 个模块)...", expanded=True) as status:
+            for task in tasks:
+                st.write(f"📡 请求并穿透数据源：`{task['script']}`")
+                code, res_csv = run_spider(task["script"], task["env"])
+                if code == 0 and os.path.exists(res_csv):
+                    df = pd.read_csv(res_csv)
+                    st.success(f"✅ {task['script']} 抓取与清洗完毕 (共 {len(df)} 条)")
+                    
+                    with st.expander(f"📦 查看 {task['script']} 结构化数据 (点击展开)"):
+                        st.dataframe(df, hide_index=True, use_container_width=True)
+                        
+                    all_dfs.append(f"### {task['script']} 结构化快照\n" + df.to_markdown(index=False))
+                    os.remove(res_csv)
+                else:
+                    st.error(f"❌ {task['script']} 节点请求异常")
+
+            if all_dfs:
+                status.update(label=f"数据源拉取完毕。正在基于【{analysis_mode}】视角进行归纳...", state="running")
+                
+                ai_prompt = f"""
+                你是一位具备全局视野的商业情报专家。当前用户的核心分析诉求为：【{analysis_mode}】。
+                请基于底层 Agent 刚刚抓取的结构化数据，撰写高管级简报。
+                
+                底层数据源快照：
+                {"\n\n".join(all_dfs)}
+                
+                输出排版要求（务必严格遵循）：
+                1. 🎯 **核心摘要**：一句话说明本次抓取覆盖的范围，并给出最重要的一条定性结论（加粗显示）。
+                2. 📊 **数据洞察**：以无序列表形式，列出支撑结论的关键数据事实。必须包含表中的具体数值或排名对比（关键数字需加粗）。
+                3. 💡 **战略启示**：基于当前分析视角，给出一条直接指向业务落地的商业建议。
+                """
+                with st.chat_message("assistant"):
+                    try:
+                        resp = CLIENT.chat.completions.create(model="deepseek-chat", messages=[{"role": "user", "content": ai_prompt}])
+                        ans = resp.choices[0].message.content
+                        st.markdown(ans)
+                        st.session_state.history.append({"role": "assistant", "content": ans})
+                    except:
+                        st.error("AI 分析服务响应超时，请直接展开上方的数据卡片进行查看。")
+                status.update(label="✅ 分析报告生成完毕", state="complete")
+    else:
+        st.warning("⚠️ 无法解析指令意图。请确保包含：玩匠、豆瓣、直播、手游 等有效识别关键字。")
