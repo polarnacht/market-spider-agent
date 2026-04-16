@@ -12,26 +12,23 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 import warnings
 
-# === 屏蔽警告并强制 UTF-8 输出，防止进度条截取特殊字符时崩溃 ===
+# === 屏蔽警告并强制 UTF-8 输出 ===
 warnings.filterwarnings("ignore")
 if sys.stdout.encoding != 'utf-8':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# === 从 app.py 读取环境变量 ===
 SCRAPE_LIMIT = int(os.environ.get("SCRAPE_LIMIT", 10))
 OUTPUT_FILE = os.environ.get("OUTPUT_FILE", "Wanjiang_Result.csv")
 YEAR = os.environ.get("YEAR", "2026")
 MONTH = os.environ.get("MONTH", "02")
 
-# 动态生成玩匠的年月匹配字符串
-MONTH_KEY = f"{YEAR}年{int(MONTH)}月"   # 例如: "2026年2月"
-TARGET_MONTH = f"{YEAR}-{str(MONTH).zfill(2)}"  # 例如: "2026-02"
+MONTH_KEY = f"{YEAR}年{int(MONTH)}月"   
+TARGET_MONTH = f"{YEAR}-{str(MONTH).zfill(2)}"  
 
 # ================= 核心工具函数 =================
 
 def init_driver():
-    """适配云端 Linux 环境的核心无头浏览器配置"""
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -39,6 +36,10 @@ def init_driver():
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--disable-blink-features=AutomationControlled")
+    
+    # === 核心修复 1：强制伪装真实用户的 User-Agent，洗掉 Headless 痕迹 ===
+    ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    options.add_argument(f'user-agent={ua}')
 
     chromium_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
     chromedriver_path = shutil.which("chromedriver")
@@ -77,7 +78,6 @@ def normalize_number(text):
         return 0
 
 def get_publisher(driver):
-    """复用 TapTap 最强多重 Fallback 厂商提取机制"""
     try:
         elements = driver.find_elements(By.XPATH, "//*[contains(text(), '供应商') or contains(text(), '发行商') or contains(text(), '开发商')]")
         for el in elements:
@@ -87,10 +87,8 @@ def get_publisher(driver):
                     text = text.replace(prefix, "")
                 if text: return text.strip()
     except: pass
-
     try: return driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").text.strip()
     except: pass
-        
     try: return driver.find_element(By.CSS_SELECTOR, "a.developer-name, span.developer-text").text.strip()
     except: pass
     return "暂无信息"
@@ -100,7 +98,7 @@ def get_publisher(driver):
 def get_game_list_from_16p(driver):
     print(f"[{MONTH_KEY} 开测榜] 正在从玩匠获取名单...")
     driver.get("https://www.16p.com/newgame")
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, 15)
 
     # 切换年月
     while True:
@@ -111,16 +109,25 @@ def get_game_list_from_16p(driver):
             time.sleep(0.5)
         except: break
     
-    try: wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'1日')]"))).click()
-    except: pass
+    # 点击 1 日
+    try: 
+        wait.until(EC.element_to_be_clickable((By.XPATH, "//button[contains(.,'1日')]"))).click()
+        # === 核心修复 2：点击后强制等待，给 Vue 异步加载数据的空间 ===
+        time.sleep(3) 
+    except Exception as e: 
+        print(f"点击日期警告: {e}")
     
-    # 滚动加载
+    # 强制定位列表框，不要用 try 吞掉报错
     try:
-        feed = driver.find_element(By.CSS_SELECTOR, "div.van-list[role='feed']")
-        for _ in range(15): 
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(0.8)
-    except: pass
+        feed = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.van-list[role='feed']")))
+    except Exception:
+        print("❌ 无法找到页面列表元素，可能遭遇人机验证拦截或页面未加载完成。")
+        return []
+
+    # 滚动加载
+    for _ in range(15): 
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(0.8)
 
     results = []
     seen = set()
@@ -139,9 +146,11 @@ def get_game_list_from_16p(driver):
                     results.append({"rank": rank, "name": name, "date": date})
                     seen.add(name)
                     rank += 1
-                if len(results) >= SCRAPE_LIMIT: # 触发截断
+                if len(results) >= SCRAPE_LIMIT: 
                     return results
-    except: pass
+    except Exception as e: 
+        print(f"解析列表异常: {e}")
+        
     return results
 
 def scrape_current_stats(driver):
@@ -170,7 +179,6 @@ def get_taptap_details(driver, game_list):
         raw_name = item['name']
         search_name = clean_game_name(raw_name)
         
-        # === 配合 app.py 实时进度条打印 ===
         print(f"[{idx+1}/{total}] Processing: {raw_name} (开测日期: {item['date']})")
 
         row = {
@@ -252,7 +260,7 @@ def main():
             df.to_csv(OUTPUT_FILE, index=False, encoding="utf-8-sig")
             print(f"File Saved: {OUTPUT_FILE}")
         else:
-            print("未能抓取到任何有效数据，可能该月无数据或页面结构变更。")
+            print("未能抓取到任何有效数据，已触发安全退出。")
     finally:
         driver.quit()
 
