@@ -5,12 +5,9 @@ import os
 import re
 import uuid
 import sys
-import time
 from openai import OpenAI
-from datetime import datetime
 
 # ================= 核心配置区 =================
-# 优先从 Streamlit 云端安全配置(Secrets)中读取，若无则使用默认 Key
 if "api_key" in st.secrets:
     API_KEY = st.secrets["api_key"]
 else:
@@ -19,52 +16,51 @@ else:
 BASE_URL = "https://api.deepseek.com"
 CLIENT = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 
-st.set_page_config(page_title="战略数分爬取 Agent", layout="wide", page_icon="🛡️")
+st.set_page_config(page_title="市场情报提取 Agent", layout="wide", page_icon="🛡️")
 
 # --- 1. UI 头部设计 ---
-st.title("🛡️ 战略数分 - 市场信息提取 Agent")
+st.title("🛡️ 市场数据自动化提取与分析 Agent")
 st.markdown("---")
 
-# --- 1.5 左侧边栏：控制面板 (新增清空功能) ---
+# --- 2. 左侧边栏：控制面板 ---
 with st.sidebar:
-    st.header("🎛️ 控制面板")
-    st.markdown("用于重置 Agent 状态，开启全新查询。")
-    if st.button("🧹 清空所有对话和输出", use_container_width=True):
+    st.header("🎛️ 系统控制")
+    if st.button("🧹 清空当前对话与输出", use_container_width=True):
         st.session_state.history = []
         st.rerun()
+    st.markdown("---")
+    st.caption("系统状态：\n- 容器化运行: 正常\n- 数据流监听: 开启\n- 容灾与降级: 就绪")
 
-# --- 2. 动态说明指南 ---
-with st.expander("📌 使用指南与能力说明", expanded=True):
+# --- 3. 数据源与规格说明 (极简产品风格) ---
+with st.expander("📌 数据源规格与指令说明", expanded=True):
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown("### 🎮 TapTap 预约榜")
-        st.caption("数据属性：**实时更新**")
         st.markdown(
-            "- **功能**：抓取当前最新预约排名\n- **深度**：进入详情页提取简介及安卓预约量\n- **限制**：实时性强，无历史追溯")
+            "**时效范围**：实时数据\n"
+            "**包含字段**：排名、名称、简介、标签、厂商、预约量\n"
+            "**提取限制**：仅限当前最新排名，不支持历史回溯\n"
+            "**指令示例**：`提取 taptap 预约榜前 5 名`"
+        )
     with col2:
-        st.markdown("### 🕹️ Steam 畅销榜")
-        st.caption("数据属性：**周度更新**")
+        st.markdown("### 🕹️ Steam 愿望榜")
         st.markdown(
-            "- **功能**：抓取周畅销榜单\n- **深度**：支持追溯历史周数据、价格及排名变化\n- **限制**：以“周”为单位进行翻页")
+            "**时效范围**：实时数据（含近7日/30日热度变化）\n"
+            "**包含字段**：排名、名称、热度增量、开发商、发行商\n"
+            "**提取限制**：受限于性能，单次提取建议不超过 200 条\n"
+            "**指令示例**：`分析 steam 愿望榜前 50 名`"
+        )
     with col3:
         st.markdown("### 🎬 IMDb 影视榜")
-        st.caption("数据属性：**月度更新**")
         st.markdown(
-            "- **功能**：抓取全球影视热度榜\n- **深度**：支持自定义年份、月份查询\n- **限制**：按自然月筛选发布日期")
+            "**时效范围**：按自然月度支持历史回溯\n"
+            "**包含字段**：排名、名称、评分、链接\n"
+            "**提取限制**：查询必须包含具体的年份与月份\n"
+            "**指令示例**：`提取 imdb 2026年3月前 5 名`"
+        )
 
-    st.info("""
-    **💡 提问范式示例：**
-    - **TapTap**: `提取 taptap 预约榜前 3 名`
-    - **Steam**: `查看 steam 过去 2 周的畅销榜` (系统会自动翻页抓取历史周)
-    - **IMDb**: `分析 imdb 2026年3月的前 3 名影视剧`
-    """)
-
-
-# --- 3. 实时调度内核 ---
+# --- 4. 实时调度内核 ---
 def run_spider_with_progress(script_name, params):
-    """
-    通过 Popen 实时监听子进程输出，更新进度条与日志窗
-    """
     task_id = str(uuid.uuid4())[:8]
     output_csv = f"result_{task_id}.csv"
     script_abs_path = os.path.abspath(script_name)
@@ -74,12 +70,11 @@ def run_spider_with_progress(script_name, params):
     env.update(params)
     env["OUTPUT_FILE"] = output_csv
 
-    # 使用 Popen 开启实时流式监听
     process = subprocess.Popen(
-        [python_exe, "-u", script_abs_path], # -u 确保输出不被缓存
+        [python_exe, "-u", script_abs_path], 
         env=env,
         stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,  # 合并错误流
+        stderr=subprocess.STDOUT,  
         text=True,
         encoding="utf-8",
         errors='replace',
@@ -87,12 +82,10 @@ def run_spider_with_progress(script_name, params):
         bufsize=1
     )
 
-    # 在 st.status 内部创建动态占位符
     progress_bar = st.progress(0)
     log_area = st.empty()
     full_logs = []
 
-    # 循环读取输出
     while True:
         line = process.stdout.readline()
         if not line and process.poll() is not None:
@@ -100,54 +93,42 @@ def run_spider_with_progress(script_name, params):
         if line:
             clean_line = line.strip()
             full_logs.append(clean_line)
-            # 实时显示日志行
-            log_area.caption(f" 内核日志: {clean_line}")
+            log_area.caption(f"⚙️ Kernel Log: {clean_line}")
 
-            # 匹配进度格式 [x/y]
             progress_match = re.search(r"\[(\d+)/(\d+)\]", clean_line)
             if progress_match:
                 current = int(progress_match.group(1))
                 total = int(progress_match.group(2))
-                # 限制进度在 0-1 之间
                 progress_bar.progress(min(current / total, 1.0))
 
     return_code = process.wait()
     return return_code, output_csv, "\n".join(full_logs)
 
-
-# --- 4. 指令意图解析器 ---
+# --- 5. 意图解析器 ---
 def parse_intent(prompt):
     limit = re.search(r'(\d+)', prompt).group(1) if re.search(r'(\d+)', prompt) else "5"
     date_match = re.search(r'(\d{4})[年-]\s*(\d{1,2})', prompt)
     year = date_match.group(1) if date_match else "2026"
     month = date_match.group(2) if date_match else "02"
 
-    weeks = "1"
-    if "周" in prompt:
-        w_match = re.search(r'(\d+)周', prompt)
-        weeks = w_match.group(1) if w_match else "1"
-
     p_lower = prompt.lower()
     if "steam" in p_lower:
-        return "steam.py", {"SCRAPE_LIMIT": limit, "WEEKS_TO_SCRAPE": weeks}
+        return "steam.py", {"SCRAPE_LIMIT": limit}
     elif "tap" in p_lower:
         return "taptap.py", {"SCRAPE_LIMIT": limit}
     elif "imdb" in p_lower:
         return "imdb.py", {"SCRAPE_LIMIT": limit, "YEAR": year, "MONTH": month}
     return None, None
 
-
-# --- 5. 对话交互逻辑 ---
+# --- 6. 核心对话流 ---
 if "history" not in st.session_state:
     st.session_state.history = []
 
-# 渲染历史
 for chat in st.session_state.history:
     with st.chat_message(chat["role"]):
         st.markdown(chat["content"])
 
-# 输入处理
-if prompt := st.chat_input("在此输入您的提取指令..."):
+if prompt := st.chat_input("输入提取指令 (参考上方指令示例)..."):
     st.session_state.history.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
@@ -155,19 +136,55 @@ if prompt := st.chat_input("在此输入您的提取指令..."):
     script_file, env_vars = parse_intent(prompt)
 
     if script_file:
-        with st.status(f"⚙任务下达：启动 `{script_file}` 内核进行数据穿透...", expanded=True) as status:
-            # 运行并显示实时进度
+        with st.status(f"执行中：调用 `{script_file}` 内核...", expanded=True) as status:
             ret_code, res_csv, final_logs = run_spider_with_progress(script_file, env_vars)
 
             if ret_code == 0 and os.path.exists(res_csv):
                 df = pd.read_csv(res_csv)
-                st.success(f"数据采集成功！已加载 {len(df)} 条结构化记录。")
+                data_count = len(df)
+                st.success(f"任务完成：成功加载 {data_count} 条数据。")
                 st.dataframe(df)
 
-                # AI 分析
                 data_md = df.to_markdown(index=False)
+                
+                # === 根据数据量动态生成分析策略 ===
+                if data_count <= 10:
+                    analysis_strategy = "提取核心标的信息。请直接以精炼的列表形式输出这几款产品的关键数据表现，不做发散性的宏观趋势分析。"
+                else:
+                    analysis_strategy = "进行宏观数据概览。重点关注：1. 头部厂商/开发者的集中度；2. 增速最快（热度增量高）的标的；3. 整体品类分布特征。客观简练，避免过度口语化。"
+
                 with st.chat_message("assistant"):
-                    ai_prompt = f"你是一个战略数分专家。基于实时抓取的数据表格：\n\n{data_md}\n\n请针对用户需求 '{prompt}' 进行总结与洞察。"
+                    # === 结合你的专业 Prompt 结构 ===
+                    ai_prompt = f"""
+你是一个数据分析助手，请基于数据进行客观分析，不要编造信息。
+
+【数据表】
+{data_md}
+
+【用户需求】
+{prompt}
+
+【分析策略】
+{analysis_strategy}
+
+【分析要求】
+1. 先识别字段含义（如厂商、数值、时间等）
+2. 所有结论必须基于数据，不允许主观推测
+3. 禁止复述数据表内容
+4. 禁止空洞结论（如“整体表现良好”）
+
+【输出格式】
+- 使用分点表达（不要长段落）
+- 每一点必须有“数据支撑”
+- 控制在 3-6 条结论
+- 语言风格：客观、简洁、偏行业分析报告
+
+直接输出结果，不要解释过程。
+
+【重要约束】
+如果数据不足以支持某个分析点，请直接跳过，不要补充或猜测。
+                    """
+                    
                     try:
                         resp = CLIENT.chat.completions.create(
                             model="deepseek-chat",
@@ -177,16 +194,16 @@ if prompt := st.chat_input("在此输入您的提取指令..."):
                         st.markdown(ans)
                         st.session_state.history.append({"role": "assistant", "content": ans})
                     except:
-                        st.error("AI 战略洞察生成失败，请参考上方数据表格。")
+                        st.error("API 调用超时，请直接查看原始数据。")
 
-                status.update(label="✅ 战略提取任务完成", state="complete")
+                status.update(label="处理完毕", state="complete")
                 if os.path.exists(res_csv):
                     os.remove(res_csv)
             else:
-                st.error(f"内核运行异常，详细日志如下：")
-                with st.expander("点击查看底层日志详情"):
+                st.error("执行失败，日志详情：")
+                with st.expander("展开内核日志"):
                     st.code(final_logs)
-                st.info(" 战略分析：若出现 Timeout，通常由于云端网络或反爬升级，请尝试减少数量后重试。")
+                st.info("提示：若出现 Timeout，请减少单次提取数量或稍后重试。")
 
     else:
-        st.warning("⚠无法识别您的指令。请参考顶部的【使用指南】进行提问。")
+        st.warning("指令无法解析。请确保包含关键字 (taptap / steam / imdb)。")
