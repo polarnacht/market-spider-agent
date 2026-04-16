@@ -190,7 +190,7 @@ def main():
                     "简介": intro[:150] + "..." if len(intro) > 150 else intro,  
                     "标签": tags_str,
                     "厂商": factory,
-                    "预约/关注量": reserve_num if reserve_num > 0 else "暂无数据"
+                    "预约/关注量": reserve_num
                 })
             except Exception: continue
 
