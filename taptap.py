@@ -72,9 +72,10 @@ def get_game_list(driver):
 def get_max_reserve_num(driver):
     def normalize_number(text):
         if not text: return 0
-        text = str(text).replace("人", "").replace(",", "").strip()
+        # 移除空格和所有非数字及非单位字符
+        text = str(text).replace(" ", "").replace(",", "").strip()
         try:
-            # 暴力提取字符串中的浮点数部分
+            # 提取数字部分（支持 12.5 这种浮点）
             match = re.search(r"[\d\.]+", text)
             if not match: return 0
             num = float(match.group())
@@ -83,73 +84,49 @@ def get_max_reserve_num(driver):
             else: return int(num)
         except: return 0
 
-    def extract_with_retry():
-        # 轮询 3 次，专门对付前端数据加载延迟！
-        for attempt in range(3):
-            max_curr = 0
-            
-            # 策略1：官方指标面板
-            try:
-                for box in driver.find_elements(By.CSS_SELECTOR, "div.single-info"):
-                    text_content = box.text.strip()
-                    if "预约" in text_content or "关注" in text_content:
-                        val_str = box.find_element(By.CSS_SELECTOR, ".single-info__content__value").text.strip()
-                        max_curr = max(max_curr, normalize_number(val_str))
-            except: pass
-            
-            # 策略2：轮播图备用面板
-            if max_curr == 0:
-                try:
-                    for box in driver.find_elements(By.CSS_SELECTOR, "div.swiper-slide"):
-                        text_content = box.text.strip()
-                        if "预约" in text_content or "关注" in text_content:
-                            spans = box.find_elements(By.TAG_NAME, "span")
-                            if len(spans) >= 2:
-                                max_curr = max(max_curr, normalize_number(spans[0].text.strip()))
-                except: pass
-
-            # 策略3：终极 XPath 地毯式检索
-            if max_curr == 0:
-                try:
-                    elems = driver.find_elements(By.XPATH, "//*[contains(text(), '预约') or contains(text(), '关注')]")
-                    for el in elems:
-                        parent_text = el.find_element(By.XPATH, "..").text.strip()
-                        # 防止抓到整篇文章，只看短文本里的数字
-                        if 2 < len(parent_text) < 30:
-                            max_curr = max(max_curr, normalize_number(parent_text))
-                except: pass
-
-            if max_curr > 0:
-                return max_curr
-                
-            # 如果是 0，说明数据还没刷出来，等 1 秒后再试！
-            time.sleep(1)
-            
-        return 0
+    def extract_from_html():
+        max_v = 0
+        try:
+            # 策略：根据你提供的 HTML 源码精准定位
+            # 寻找所有包含 single-info__content 的块
+            info_blocks = driver.find_elements(By.CSS_SELECTOR, ".single-info__content")
+            for block in info_blocks:
+                block_text = block.get_attribute("textContent") # 穿透式提取内容
+                if "预约" in block_text or "关注" in block_text:
+                    # 尝试定位那个包含数值的具体 div
+                    val_elem = block.find_element(By.CSS_SELECTOR, ".single-info__content__value")
+                    val_str = val_elem.get_attribute("textContent")
+                    max_v = max(max_v, normalize_number(val_str))
+        except: pass
+        return max_v
 
     global_max = 0
-    
-    # 给页面初始框架一点点加载时间
-    try: WebDriverWait(driver, 3).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content")))
+    # 强制等待目标元素在页面上“现身”
+    try:
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".single-info__content__value"))
+        )
     except: pass
 
     try:
-        platform_buttons = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
-        if platform_buttons:
-            for btn in platform_buttons:
-                try:
-                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
-                    time.sleep(0.5)
-                    driver.execute_script("arguments[0].click();", btn)
-                    # 点击切换平台后，触发三重雷达提取
-                    global_max = max(global_max, extract_with_retry())
-                except: continue
+        # 检查是否有切换按钮（多端情况）
+        btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+        if btns:
+            for i in range(len(btns)):
+                # 重新获取按钮，防止页面刷新导致失效
+                refresh_btns = driver.find_elements(By.CSS_SELECTOR, "div.platform-picker-switch__item")
+                btn = refresh_btns[i]
+                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", btn)
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(1.2) # 给 Vue 组件一点数据挂载时间
+                global_max = max(global_max, extract_from_html())
         else:
-            global_max = extract_with_retry()
+            # 单端情况直接抓
+            global_max = extract_from_html()
     except:
-        global_max = extract_with_retry()
-        
-    return global_max
+        global_max = extract_from_html()
+
+    return global_max if global_max > 0 else "暂无数据"
 # ==============================================================
 
 def get_additional_info(driver):
