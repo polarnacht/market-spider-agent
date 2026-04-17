@@ -134,14 +134,32 @@ def get_taptap_details(driver, game_list):
     for idx, item in enumerate(game_list):
         search_name = clean_game_name(item['name'])
         print(f"[{idx+1}/{total}] Searching: {search_name}")
-        row = {"序号": item['rank'], "开测日期": item['date'], "名称": item['name'], "标签": "", "厂商": "", "预约/关注量": "暂无数据", "简介": ""}
+        row = {"序号": item['rank'], "开测日期": item['date'], "名称": item['name'], "标签": "", "厂商": "暂无信息", "预约/关注量": "暂无数据", "简介": ""}
         try:
             driver.get(f"https://www.taptap.cn/search/{search_name}")
             try: WebDriverWait(driver, 5).until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'a.tap-router[href*="/app/"]'))).click(); time.sleep(1.5)
             except: final_data.append(row); continue
             
-            try: row["厂商"] = driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").get_attribute("textContent").strip()
-            except: pass
+            # ========== 替换后的强力厂商提取逻辑 ==========
+            try:
+                found_publisher = False
+                # 策略1：新版前端合并结构匹配
+                nodes = driver.find_elements(By.XPATH, "//div[contains(text(),'供应商') or contains(text(),'厂商') or contains(text(),'发行') or contains(text(),'开发')]")
+                for node in nodes:
+                    text = node.get_attribute("textContent").strip()
+                    if 2 < len(text) < 50:
+                        clean_text = re.sub(r"^(供应商|厂商|开发商|开发者|发行商|开发|发行|：|:|\s)+", "", text)
+                        if clean_text:
+                            row["厂商"] = clean_text.strip()
+                            found_publisher = True
+                            break
+                # 策略2：老版兄弟节点兜底
+                if not found_publisher:
+                    row["厂商"] = driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发') or contains(text(),'供应商')]/following-sibling::div").get_attribute("textContent").strip()
+            except: 
+                pass
+            # ==============================================
+
             try: row["标签"] = ", ".join([t.get_attribute("textContent").strip() for t in driver.find_elements(By.CSS_SELECTOR, "a.app-intro__tag-item")])
             except: pass
             row["预约/关注量"] = get_max_reserve_num(driver)
