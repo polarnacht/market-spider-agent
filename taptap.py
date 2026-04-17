@@ -123,8 +123,19 @@ def get_max_reserve_num(driver):
 
 def get_publisher(driver):
     try:
-        # 优先取包含“厂商”字样的兄弟节点
-        factory = driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发')]/following-sibling::div").get_attribute("textContent").strip()
+        # 策略1：应对新版前端结构（关键字和公司名在同一个 div 标签内，例如："供应商 完美世界（北京）互动娱乐有限公司"）
+        nodes = driver.find_elements(By.XPATH, "//div[contains(text(),'供应商') or contains(text(),'厂商') or contains(text(),'发行') or contains(text(),'开发')]")
+        for node in nodes:
+            text = node.get_attribute("textContent").strip()
+            # 限制文本长度在合理范围内，防止误抓到包含这些字眼的游戏长篇简介
+            if 2 < len(text) < 50:
+                # 用正则精准剃掉开头的提示词、冒号和空格，只保留纯正的公司名
+                clean_text = re.sub(r"^(供应商|厂商|开发商|开发者|发行商|开发|发行|：|:|\s)+", "", text)
+                if clean_text:  # 如果剔除前缀后还有内容，说明精准命中了公司名
+                    return clean_text.strip()
+        
+        # 策略2：兜底老版前端结构（关键字和公司名分别在相邻的两个兄弟 div 里）
+        factory = driver.find_element(By.XPATH, "//div[contains(text(),'发行') or contains(text(),'厂商') or contains(text(),'开发') or contains(text(),'供应商')]/following-sibling::div").get_attribute("textContent").strip()
         return factory
     except:
         return "暂无信息"
