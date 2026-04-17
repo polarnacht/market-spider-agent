@@ -12,7 +12,7 @@ from openai import OpenAI
 API_KEY = st.secrets.get("api_key", "sk-cc6655649d204550bd5bcffd355ab4dd")
 CLIENT = OpenAI(api_key=API_KEY, base_url="https://api.deepseek.com")
 
-st.set_page_config(page_title="市场情报爬取 Agent", layout="wide", page_icon="🌐")
+st.set_page_config(page_title="全域市场情报 Agent", layout="wide", page_icon="🌐")
 
 st.markdown("""
     <style>
@@ -56,7 +56,7 @@ def trigger_shortcut(cmd):
 
 col_t1, col_t2, col_t3 = st.columns([5, 2, 1])
 with col_t1:
-    st.title("🌐 战略研究-游戏市场信息 Agent")
+    st.title("🌐 战略研究-游戏全域市场信息 Agent")
 with col_t3:
     st.write("") 
     if st.button("🧹 清空会话", use_container_width=True):
