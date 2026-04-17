@@ -56,7 +56,7 @@ def trigger_shortcut(cmd):
 
 col_t1, col_t2, col_t3 = st.columns([5, 2, 1])
 with col_t1:
-    st.title("🌐 战略研究-游戏&泛娱乐市场信息 Agent")
+    st.title("🌐 战略研究-游戏市场信息 Agent")
 with col_t3:
     st.write("") 
     if st.button("🧹 清空会话", use_container_width=True):
@@ -67,7 +67,7 @@ with col_t3:
 # ================= 3. 永久常驻面板 (绝对禁止隐藏) =================
 
 # --- 模块 A: 指令规范 ---
-st.markdown("### 💡 核心指令构造指南")
+st.markdown("### 💡 核心指令指南")
 g1, g2 = st.columns(2)
 with g1:
     st.markdown(
@@ -88,7 +88,7 @@ with g2:
 st.markdown("---")
 
 # --- 模块 B: 数据源明细 (纯净无属性展示) ---
-st.markdown("### 🗂️ 数据源能力明细")
+st.markdown("### 🗂️ 数据源明细")
 d1, d2, d3 = st.columns(3)
 
 with d1:
